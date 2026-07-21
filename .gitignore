@@ -1,0 +1,30 @@
+# Java / Gradle
+backend/build/
+backend/.gradle/
+backend/out/
+*.class
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# Python
+ai-service/.venv/
+ai-service/__pycache__/
+ai-service/**/__pycache__/
+ai-service/*.egg-info/
+ai-service/.pytest_cache/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Env / secrets
+.env
+*.env.local
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
