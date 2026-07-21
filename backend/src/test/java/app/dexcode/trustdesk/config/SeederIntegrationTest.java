@@ -6,7 +6,7 @@ import app.dexcode.trustdesk.repositories.TicketRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -16,7 +16,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@DataJpaTest
+@SpringBootTest
 class SeederIntegrationTest {
 
     @TempDir
@@ -25,6 +25,7 @@ class SeederIntegrationTest {
     @Autowired private CustomerRepository customerRepository;
     @Autowired private OrderRepository orderRepository;
     @Autowired private TicketRepository ticketRepository;
+    @Autowired private DataSeeder dataSeeder;
 
     @DynamicPropertySource
     static void seedDir(DynamicPropertyRegistry registry) throws IOException {
@@ -53,10 +54,7 @@ class SeederIntegrationTest {
     }
 
     @Test
-    void seedsCustomersOrdersAndTicketsExactlyOnce() throws Exception {
-        DataSeeder dataSeeder = new DataSeeder(customerRepository, orderRepository, ticketRepository, tempDir.toString());
-        dataSeeder.run(null);
-
+    void seedsCustomersOrdersAndTicketsExactlyOnce() {
         assertEquals(1, customerRepository.count());
         assertEquals(1, orderRepository.count());
         assertEquals(1, ticketRepository.count());
@@ -64,7 +62,6 @@ class SeederIntegrationTest {
 
     @Test
     void reRunningSeederDoesNotDuplicateRows() throws Exception {
-        DataSeeder dataSeeder = new DataSeeder(customerRepository, orderRepository, ticketRepository, tempDir.toString());
         dataSeeder.run(null);
         dataSeeder.run(null);
         assertEquals(1, customerRepository.count());

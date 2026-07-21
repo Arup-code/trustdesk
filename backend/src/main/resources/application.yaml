@@ -2,9 +2,9 @@ spring:
   application:
     name: backend
   datasource:
-    url: jdbc:mysql://localhost:3306/trustdesk
-    username: trustdesk
-    password: trustdesk
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/trustdesk}
+    username: ${SPRING_DATASOURCE_USERNAME:trustdesk}
+    password: ${SPRING_DATASOURCE_PASSWORD:trustdesk}
   jpa:
     hibernate:
       ddl-auto: update

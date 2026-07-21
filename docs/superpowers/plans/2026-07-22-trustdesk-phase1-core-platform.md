@@ -4,9 +4,9 @@
 
 **Goal:** Stand up the Java Core Service's data model, seed loader, demo JWT auth, and ticket read APIs — the foundation every later phase (triage, drafts, tool actions, evals, frontend) builds on.
 
-**Architecture:** Spring Boot 4 / Java 25, Spring Data JPA over MySQL (H2 in tests), Lombok for entity boilerplate, `jjwt` for stateless bearer-token auth, Jackson (snake_case) for parsing the capstone's seed JSON files.
+**Architecture:** Spring Boot 3.3.7 / Java 21 bytecode target (running on locally installed JDK 26 — Spring Boot 4.0.7 as originally scaffolded does not resolve, and Lombok's compiler hooks are incompatible with JDK 26, so Task 1 pinned the toolchain down and hand-wrote entity boilerplate instead), Spring Data JPA over MySQL (H2 in tests), `jjwt` for stateless bearer-token auth, Jackson (snake_case) for parsing the capstone's seed JSON files.
 
-**Tech Stack:** Already scaffolded in `backend/build.gradle.kts` — no new dependencies needed for this phase.
+**Tech Stack:** `backend/build.gradle.kts` was corrected in Task 1 (see that task's report) — Spring Boot 3.3.7, `sourceCompatibility`/`targetCompatibility` = Java 21, no Lombok (entities use hand-written getters/setters/builders with the exact same fluent API Lombok would have generated — `EntityName.builder()...build()`, boolean fields expose `isX()`). Tasks 2–4 below do not use Lombok, so this correction doesn't ripple further. Later phases (Docker, Phase 5) must target a JDK 21-compatible base image, not JDK 25.
 
 ## Global Constraints (inherited from the master plan)
 
