@@ -4,7 +4,7 @@ import app.dexcode.trustdesk.persistence.JsonConverters;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,13 +23,13 @@ public class Order {
     private String status;
 
     @Column(name = "placed_at")
-    private Instant placedAt;
+    private LocalDate placedAt;
 
     @Column(name = "delivered_at")
-    private Instant deliveredAt;
+    private LocalDate deliveredAt;
 
     @Column(name = "eligible_return_until")
-    private Instant eligibleReturnUntil;
+    private LocalDate eligibleReturnUntil;
 
     private BigDecimal total;
     private String currency;
@@ -46,8 +46,8 @@ public class Order {
 
     public Order() {}
 
-    public Order(String orderId, String customerId, String status, Instant placedAt,
-                 Instant deliveredAt, Instant eligibleReturnUntil, BigDecimal total,
+    public Order(String orderId, String customerId, String status, LocalDate placedAt,
+                 LocalDate deliveredAt, LocalDate eligibleReturnUntil, BigDecimal total,
                  String currency, String paymentStatus, String trackingNumber,
                  List<Map<String, Object>> items) {
         this.orderId = orderId;
@@ -72,14 +72,14 @@ public class Order {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
-    public Instant getPlacedAt() { return placedAt; }
-    public void setPlacedAt(Instant placedAt) { this.placedAt = placedAt; }
+    public LocalDate getPlacedAt() { return placedAt; }
+    public void setPlacedAt(LocalDate placedAt) { this.placedAt = placedAt; }
 
-    public Instant getDeliveredAt() { return deliveredAt; }
-    public void setDeliveredAt(Instant deliveredAt) { this.deliveredAt = deliveredAt; }
+    public LocalDate getDeliveredAt() { return deliveredAt; }
+    public void setDeliveredAt(LocalDate deliveredAt) { this.deliveredAt = deliveredAt; }
 
-    public Instant getEligibleReturnUntil() { return eligibleReturnUntil; }
-    public void setEligibleReturnUntil(Instant eligibleReturnUntil) { this.eligibleReturnUntil = eligibleReturnUntil; }
+    public LocalDate getEligibleReturnUntil() { return eligibleReturnUntil; }
+    public void setEligibleReturnUntil(LocalDate eligibleReturnUntil) { this.eligibleReturnUntil = eligibleReturnUntil; }
 
     public BigDecimal getTotal() { return total; }
     public void setTotal(BigDecimal total) { this.total = total; }
@@ -134,9 +134,9 @@ public class Order {
         private String orderId;
         private String customerId;
         private String status;
-        private Instant placedAt;
-        private Instant deliveredAt;
-        private Instant eligibleReturnUntil;
+        private LocalDate placedAt;
+        private LocalDate deliveredAt;
+        private LocalDate eligibleReturnUntil;
         private BigDecimal total;
         private String currency;
         private String paymentStatus;
@@ -146,9 +146,9 @@ public class Order {
         public OrderBuilder orderId(String orderId) { this.orderId = orderId; return this; }
         public OrderBuilder customerId(String customerId) { this.customerId = customerId; return this; }
         public OrderBuilder status(String status) { this.status = status; return this; }
-        public OrderBuilder placedAt(Instant placedAt) { this.placedAt = placedAt; return this; }
-        public OrderBuilder deliveredAt(Instant deliveredAt) { this.deliveredAt = deliveredAt; return this; }
-        public OrderBuilder eligibleReturnUntil(Instant eligibleReturnUntil) { this.eligibleReturnUntil = eligibleReturnUntil; return this; }
+        public OrderBuilder placedAt(LocalDate placedAt) { this.placedAt = placedAt; return this; }
+        public OrderBuilder deliveredAt(LocalDate deliveredAt) { this.deliveredAt = deliveredAt; return this; }
+        public OrderBuilder eligibleReturnUntil(LocalDate eligibleReturnUntil) { this.eligibleReturnUntil = eligibleReturnUntil; return this; }
         public OrderBuilder total(BigDecimal total) { this.total = total; return this; }
         public OrderBuilder currency(String currency) { this.currency = currency; return this; }
         public OrderBuilder paymentStatus(String paymentStatus) { this.paymentStatus = paymentStatus; return this; }

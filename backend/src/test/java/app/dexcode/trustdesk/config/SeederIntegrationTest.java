@@ -31,13 +31,13 @@ class SeederIntegrationTest {
     static void seedDir(DynamicPropertyRegistry registry) throws IOException {
         Files.writeString(tempDir.resolve("customers.json"), """
             [{"customer_id":"cus_1001","name":"Asha Rao","email":"asha@example.com",
-              "tier":"gold","country":"IN","created_at":"2025-01-01T00:00:00Z",
+              "tier":"gold","country":"IN","created_at":"2025-01-01",
               "verified":true,"tags":["vip"]}]
             """);
         Files.writeString(tempDir.resolve("orders.json"), """
             [{"order_id":"ord_5001","customer_id":"cus_1001","status":"delivered",
-              "placed_at":"2025-01-05T00:00:00Z","delivered_at":"2025-01-10T00:00:00Z",
-              "eligible_return_until":"2025-02-10T00:00:00Z","total":49.99,
+              "placed_at":"2025-01-05","delivered_at":"2025-01-10",
+              "eligible_return_until":"2025-02-10","total":49.99,
               "currency":"INR","payment_status":"paid","tracking_number":"TRK123",
               "items":[{"sku":"BG-AIRPODS-01","qty":1}]}]
             """);

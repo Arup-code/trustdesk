@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -86,11 +87,11 @@ public class DataSeeder implements ApplicationRunner {
 
     private record SeedCustomer(
         String customerId, String name, String email, String tier, String country,
-        Instant createdAt, boolean verified, List<String> tags) {}
+        LocalDate createdAt, boolean verified, List<String> tags) {}
 
     private record SeedOrder(
-        String orderId, String customerId, String status, Instant placedAt,
-        Instant deliveredAt, Instant eligibleReturnUntil, BigDecimal total,
+        String orderId, String customerId, String status, LocalDate placedAt,
+        LocalDate deliveredAt, LocalDate eligibleReturnUntil, BigDecimal total,
         String currency, String paymentStatus, String trackingNumber,
         List<Map<String, Object>> items) {}
 

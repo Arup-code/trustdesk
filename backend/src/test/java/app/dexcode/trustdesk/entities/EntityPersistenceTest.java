@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -27,7 +28,7 @@ class EntityPersistenceTest {
     void savesAndReloadsCustomerWithTags() {
         customerRepository.saveAndFlush(Customer.builder()
             .customerId("cus_1001").name("Asha Rao").email("asha@example.com")
-            .tier("gold").country("IN").createdAt(Instant.parse("2025-01-01T00:00:00Z"))
+            .tier("gold").country("IN").createdAt(LocalDate.parse("2025-01-01"))
             .verified(true).tags(List.of("vip", "beta")).build());
 
         Customer reloaded = customerRepository.findById("cus_1001").orElseThrow();
@@ -38,9 +39,9 @@ class EntityPersistenceTest {
     void savesAndReloadsOrderWithItems() {
         orderRepository.saveAndFlush(Order.builder()
             .orderId("ord_5001").customerId("cus_1001").status("delivered")
-            .placedAt(Instant.parse("2025-01-05T00:00:00Z"))
-            .deliveredAt(Instant.parse("2025-01-10T00:00:00Z"))
-            .eligibleReturnUntil(Instant.parse("2025-02-10T00:00:00Z"))
+            .placedAt(LocalDate.parse("2025-01-05"))
+            .deliveredAt(LocalDate.parse("2025-01-10"))
+            .eligibleReturnUntil(LocalDate.parse("2025-02-10"))
             .total(new java.math.BigDecimal("49.99")).currency("INR")
             .paymentStatus("paid").trackingNumber("TRK123")
             .items(List.of(Map.of("sku", "BG-AIRPODS-01", "qty", 1))).build());

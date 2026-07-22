@@ -3,7 +3,7 @@ package app.dexcode.trustdesk.entities;
 import app.dexcode.trustdesk.persistence.JsonConverters;
 import jakarta.persistence.*;
 
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 
@@ -21,7 +21,7 @@ public class Customer {
     private String country;
 
     @Column(name = "created_at")
-    private Instant createdAt;
+    private LocalDate createdAt;
 
     private boolean verified;
 
@@ -32,7 +32,7 @@ public class Customer {
     public Customer() {}
 
     public Customer(String customerId, String name, String email, String tier, String country,
-                    Instant createdAt, boolean verified, List<String> tags) {
+                    LocalDate createdAt, boolean verified, List<String> tags) {
         this.customerId = customerId;
         this.name = name;
         this.email = email;
@@ -83,11 +83,11 @@ public class Customer {
         this.country = country;
     }
 
-    public Instant getCreatedAt() {
+    public LocalDate getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(Instant createdAt) {
+    public void setCreatedAt(LocalDate createdAt) {
         this.createdAt = createdAt;
     }
 
@@ -144,7 +144,7 @@ public class Customer {
         private String email;
         private String tier;
         private String country;
-        private Instant createdAt;
+        private LocalDate createdAt;
         private boolean verified;
         private List<String> tags;
 
@@ -173,7 +173,7 @@ public class Customer {
             return this;
         }
 
-        public CustomerBuilder createdAt(Instant createdAt) {
+        public CustomerBuilder createdAt(LocalDate createdAt) {
             this.createdAt = createdAt;
             return this;
         }
