@@ -1,6 +1,7 @@
 package app.dexcode.trustdesk.entities;
 
 import app.dexcode.trustdesk.persistence.JsonConverters;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.List;
@@ -84,18 +85,23 @@ public class Ticket {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 
+    @JsonIgnore
     public String getExpectedCategory() { return expectedCategory; }
     public void setExpectedCategory(String expectedCategory) { this.expectedCategory = expectedCategory; }
 
+    @JsonIgnore
     public String getExpectedPriority() { return expectedPriority; }
     public void setExpectedPriority(String expectedPriority) { this.expectedPriority = expectedPriority; }
 
+    @JsonIgnore
     public String getExpectedSentiment() { return expectedSentiment; }
     public void setExpectedSentiment(String expectedSentiment) { this.expectedSentiment = expectedSentiment; }
 
+    @JsonIgnore
     public Boolean getExpectedEscalation() { return expectedEscalation; }
     public void setExpectedEscalation(Boolean expectedEscalation) { this.expectedEscalation = expectedEscalation; }
 
+    @JsonIgnore
     public List<String> getExpectedActions() { return expectedActions; }
     public void setExpectedActions(List<String> expectedActions) { this.expectedActions = expectedActions; }
 

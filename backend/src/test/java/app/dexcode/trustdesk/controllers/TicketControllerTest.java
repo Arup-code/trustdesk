@@ -46,6 +46,17 @@ class TicketControllerTest {
     }
 
     @Test
+    void listTicketsDoesNotLeakEvalAnswerKeyFields() throws Exception {
+        mockMvc.perform(authed(get("/tickets")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.ticketId == 'tkt_9001')].expectedCategory").doesNotExist())
+            .andExpect(jsonPath("$[?(@.ticketId == 'tkt_9001')].expectedPriority").doesNotExist())
+            .andExpect(jsonPath("$[?(@.ticketId == 'tkt_9001')].expectedSentiment").doesNotExist())
+            .andExpect(jsonPath("$[?(@.ticketId == 'tkt_9001')].expectedEscalation").doesNotExist())
+            .andExpect(jsonPath("$[?(@.ticketId == 'tkt_9001')].expectedActions").doesNotExist());
+    }
+
+    @Test
     void fetchesTicketDetailWithCustomerAndOrder() throws Exception {
         mockMvc.perform(authed(get("/tickets/tkt_9001")))
             .andExpect(status().isOk())

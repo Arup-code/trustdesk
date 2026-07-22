@@ -6,6 +6,7 @@ import app.dexcode.trustdesk.entities.Ticket;
 import app.dexcode.trustdesk.repositories.CustomerRepository;
 import app.dexcode.trustdesk.repositories.OrderRepository;
 import app.dexcode.trustdesk.repositories.TicketRepository;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -30,7 +31,8 @@ public class DataSeeder implements ApplicationRunner {
     private final String dataDir;
     private final ObjectMapper mapper = new ObjectMapper()
         .registerModule(new JavaTimeModule())
-        .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+        .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public DataSeeder(
         CustomerRepository customerRepository,
