@@ -44,6 +44,10 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // Byte Buddy (via Mockito's inline mock maker, used by @MockBean) does not yet
+    // officially recognize JDK 26 class files. This opts into its best-effort support
+    // for newer JDKs rather than hard-failing; see https://github.com/raphw/byte-buddy/issues.
+    jvmArgs("-Dnet.bytebuddy.experimental=true")
 }
 
 tasks.test {
