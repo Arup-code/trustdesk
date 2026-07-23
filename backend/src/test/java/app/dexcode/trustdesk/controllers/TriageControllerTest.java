@@ -70,4 +70,11 @@ class TriageControllerTest {
         mockMvc.perform(post("/tickets/tkt_9001/triage"))
             .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void triageReturns404ForUnknownTicket() throws Exception {
+        mockMvc.perform(post("/tickets/does-not-exist/triage")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound());
+    }
 }

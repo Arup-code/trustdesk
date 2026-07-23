@@ -2,9 +2,12 @@ package app.dexcode.trustdesk.controllers;
 
 import app.dexcode.trustdesk.dto.TriageResponse;
 import app.dexcode.trustdesk.services.TicketService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.NoSuchElementException;
 
 @RestController
 public class TriageController {
@@ -16,7 +19,11 @@ public class TriageController {
     }
 
     @PostMapping("/tickets/{id}/triage")
-    public TriageResponse triage(@PathVariable String id) {
-        return ticketService.runTriage(id);
+    public ResponseEntity<TriageResponse> triage(@PathVariable String id) {
+        try {
+            return ResponseEntity.ok(ticketService.runTriage(id));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 }
