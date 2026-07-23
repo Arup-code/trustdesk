@@ -65,6 +65,37 @@ def test_search_returns_empty_list_for_empty_index():
     assert index.search("anything") == []
 
 
+def test_search_ignores_terms_common_to_more_than_half_the_corpus(tmp_path):
+    # rank_bm25's BM25Okapi floors any term's negative IDF (a term present in
+    # more than half the corpus) to a small *positive* epsilon instead of
+    # leaving it negative -- so a query built only from words common to every
+    # document (e.g. boilerplate header words like "policy"/"support"/
+    # "customer") must not retrieve anything, exactly like a query built from
+    # words absent from the corpus entirely. This must hold for whatever
+    # words happen to be common in a given corpus, not a hand-picked list.
+    for name, unique_word in [
+        ("a", "alpha"), ("b", "bravo"), ("c", "charlie"), ("d", "delta"),
+    ]:
+        (tmp_path / f"{name}.md").write_text(
+            f"# Doc {name}\n\nDoc ID: KB-{name.upper()}-001\n\n"
+            f"This is a customer support policy about {unique_word}.",
+            encoding="utf-8",
+        )
+
+    index = KBIndex()
+    index.load_directory(str(tmp_path))
+
+    # every document shares "customer support policy about" -- a query using
+    # only those words must return nothing, not one arbitrary "least common"
+    # document via the epsilon floor.
+    assert index.search("customer support policy about") == []
+
+    # a query for a term genuinely unique to one document still works.
+    results = index.search("alpha")
+    assert len(results) == 1
+    assert results[0].doc_id == "KB-A-001"
+
+
 def test_ingest_adds_new_document_and_makes_it_searchable():
     index = KBIndex()
     from app.schemas.documents import DocumentIn

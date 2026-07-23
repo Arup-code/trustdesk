@@ -1,3 +1,4 @@
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,28 +11,38 @@ _DOC_ID_PATTERN = re.compile(r"^Doc ID:\s*(\S+)", re.MULTILINE)
 _TITLE_PATTERN = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
-# rank_bm25's BM25Okapi floors any word's IDF that goes negative (i.e. any
-# word present in more than half the corpus) to a small *positive* epsilon
-# rather than leaving it negative. Without stopword removal, an extremely
-# common word like "to" can appear in most knowledge-base documents, so a
-# query sharing only that one word with the corpus still gets a nonzero
-# score against every document containing it -- defeating the "search()
-# returns [] for genuinely unrelated queries" relevance filter that the
-# rest of the system (grounded-draft escalation) depends on. Filtering
-# common stopwords before indexing/querying keeps only content-bearing
-# terms as match signals.
-_STOPWORDS = frozenset({
-    "a", "an", "the", "and", "or", "but", "if", "of", "at", "by", "for",
-    "with", "about", "to", "from", "in", "on", "is", "are", "was", "were",
-    "be", "been", "being", "this", "that", "these", "those", "i", "you",
-    "he", "she", "it", "we", "they", "my", "your", "his", "her", "its",
-    "our", "their", "will", "would", "can", "could", "should", "just",
-    "so", "as", "not", "do", "does", "did", "have", "has", "had",
-})
-
 
 def _tokenize(text: str) -> list[str]:
-    return [tok for tok in _TOKEN_PATTERN.findall(text.lower()) if tok not in _STOPWORDS]
+    return _TOKEN_PATTERN.findall(text.lower())
+
+
+def _zero_out_floored_idf(bm25: BM25Okapi, corpus: list[list[str]]) -> None:
+    """rank_bm25's BM25Okapi floors any term's negative IDF (a term present
+    in more than half the corpus) to a small *positive* epsilon instead of
+    leaving it negative -- so a query sharing only a near-universal word
+    (a common English stopword, or KB-document boilerplate like "policy"/
+    "version"/"support") gets a nonzero, positive score against every
+    document containing that word, defeating "search() returns [] for a
+    genuinely unrelated query", which the rest of the system (grounded-draft
+    escalation) depends on. A hand-maintained stopword list only patches the
+    specific words on the list and silently reopens for any other word that
+    happens to be common in this particular corpus (verified: KB metadata
+    words like "policy"/"version" let the adversarial decoy doc rank #1 for
+    an off-topic query). Recompute each term's raw (pre-floor) document
+    frequency here and zero its IDF in the already-built index whenever that
+    raw IDF was negative, so a match on any near-universal term -- whatever
+    word that turns out to be for a given corpus -- contributes 0 score
+    instead of a small positive one. No stopword list to maintain.
+    """
+    doc_count = len(corpus)
+    document_frequency: dict[str, int] = {}
+    for tokens in corpus:
+        for term in set(tokens):
+            document_frequency[term] = document_frequency.get(term, 0) + 1
+    for term, freq in document_frequency.items():
+        raw_idf = math.log(doc_count - freq + 0.5) - math.log(freq + 0.5)
+        if raw_idf < 0:
+            bm25.idf[term] = 0.0
 
 
 @dataclass
@@ -76,7 +87,12 @@ class KBIndex:
     def _rebuild_index(self) -> None:
         self._doc_order = list(self._documents.keys())
         corpus = [_tokenize(self._documents[doc_id].content) for doc_id in self._doc_order]
-        self._bm25 = BM25Okapi(corpus) if corpus else None
+        if not corpus:
+            self._bm25 = None
+            return
+        bm25 = BM25Okapi(corpus)
+        _zero_out_floored_idf(bm25, corpus)
+        self._bm25 = bm25
 
     def search(self, query: str, k: int = 5) -> list[SearchResult]:
         if not self._bm25 or not self._doc_order:
