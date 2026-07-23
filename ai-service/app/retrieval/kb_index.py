@@ -10,9 +10,28 @@ _DOC_ID_PATTERN = re.compile(r"^Doc ID:\s*(\S+)", re.MULTILINE)
 _TITLE_PATTERN = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 
+# rank_bm25's BM25Okapi floors any word's IDF that goes negative (i.e. any
+# word present in more than half the corpus) to a small *positive* epsilon
+# rather than leaving it negative. Without stopword removal, an extremely
+# common word like "to" can appear in most knowledge-base documents, so a
+# query sharing only that one word with the corpus still gets a nonzero
+# score against every document containing it -- defeating the "search()
+# returns [] for genuinely unrelated queries" relevance filter that the
+# rest of the system (grounded-draft escalation) depends on. Filtering
+# common stopwords before indexing/querying keeps only content-bearing
+# terms as match signals.
+_STOPWORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "if", "of", "at", "by", "for",
+    "with", "about", "to", "from", "in", "on", "is", "are", "was", "were",
+    "be", "been", "being", "this", "that", "these", "those", "i", "you",
+    "he", "she", "it", "we", "they", "my", "your", "his", "her", "its",
+    "our", "their", "will", "would", "can", "could", "should", "just",
+    "so", "as", "not", "do", "does", "did", "have", "has", "had",
+})
+
 
 def _tokenize(text: str) -> list[str]:
-    return _TOKEN_PATTERN.findall(text.lower())
+    return [tok for tok in _TOKEN_PATTERN.findall(text.lower()) if tok not in _STOPWORDS]
 
 
 @dataclass

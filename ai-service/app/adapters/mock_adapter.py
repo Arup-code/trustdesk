@@ -1,3 +1,7 @@
+import re
+
+_DOC_ID_IN_PROMPT = re.compile(r"\bKB-[A-Z0-9-]+\b")
+
 _CATEGORY_KEYWORDS = {
     "refund": ["refund", "return", "damaged", "replacement", "defective", "cracked"],
     "shipping": ["tracking", "shipment", "delivery", "package", "carrier", "not moved"],
@@ -37,4 +41,9 @@ class MockModelAdapter:
         }
 
     def generate(self, prompt: str) -> str:
-        return "Thank you for reaching out. Based on our policy, here is how we can help. [MOCK RESPONSE]"
+        doc_ids = list(dict.fromkeys(_DOC_ID_IN_PROMPT.findall(prompt)))
+        base = "Thank you for reaching out. Based on our policy, here is how we can help."
+        if doc_ids:
+            citations = " ".join(f"[{doc_id}]" for doc_id in doc_ids)
+            return f"{base} {citations} [MOCK RESPONSE]"
+        return f"{base} [MOCK RESPONSE]"
