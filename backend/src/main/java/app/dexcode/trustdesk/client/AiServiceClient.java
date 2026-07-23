@@ -10,14 +10,20 @@ import org.springframework.web.client.RestClient;
 public class AiServiceClient {
 
     private final RestClient restClient;
+    private final String internalKey;
 
-    public AiServiceClient(@Value("${app.ai-service.base-url}") String baseUrl) {
+    public AiServiceClient(
+        @Value("${app.ai-service.base-url}") String baseUrl,
+        @Value("${app.ai-service.internal-key}") String internalKey
+    ) {
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        this.internalKey = internalKey;
     }
 
     public TriageResponse triage(TriageRequest request) {
         return restClient.post()
             .uri("/internal/triage")
+            .header("X-Internal-Key", internalKey)
             .body(request)
             .retrieve()
             .body(TriageResponse.class);

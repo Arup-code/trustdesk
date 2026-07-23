@@ -66,6 +66,8 @@ class KBIndex:
         ranked = sorted(zip(self._doc_order, scores), key=lambda pair: pair[1], reverse=True)
         results = []
         for doc_id, score in ranked[:k]:
+            if score <= 0:
+                continue
             doc = self._documents[doc_id]
             results.append(SearchResult(
                 doc_id=doc.doc_id,

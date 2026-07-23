@@ -18,3 +18,4 @@ app:
     expiration-minutes: 480
   ai-service:
     base-url: ${APP_AI_SERVICE_BASE_URL:http://localhost:8000}
+    internal-key: ${APP_AI_SERVICE_INTERNAL_KEY:dev-internal-key-change-me}

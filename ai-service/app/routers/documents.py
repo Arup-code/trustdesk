@@ -1,10 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.retrieval.kb_index import KBIndex
 from app.schemas.documents import IngestRequest, IngestResponse, SearchResponse
+from app.security import verify_internal_key
 from app.settings import settings
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_internal_key)])
 kb_index = KBIndex()
 kb_index.load_directory(f"{settings.data_dir}/knowledge_base")
 

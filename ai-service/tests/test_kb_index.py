@@ -2,6 +2,11 @@ from app.retrieval.kb_index import KBIndex
 
 
 def test_search_ranks_relevant_doc_first(tmp_path):
+    # Three documents, not two: with only two documents sharing no query
+    # terms, BM25's IDF term degenerates to exactly 0 for any term unique to
+    # one document (log((N-n+0.5)/(n+0.5)) with N=2, n=1 is log(1) == 0),
+    # so the "irrelevant" filter in KBIndex.search() would drop every result.
+    # A third, unrelated document breaks that degenerate tie.
     (tmp_path / "refund.md").write_text(
         "# Refund and Return Policy\n\nDoc ID: KB-REFUND-001\n\n"
         "For damaged or defective items reported within the return window, "
@@ -13,13 +18,46 @@ def test_search_ranks_relevant_doc_first(tmp_path):
         "Most orders ship within 1 business day.",
         encoding="utf-8",
     )
+    (tmp_path / "warranty.md").write_text(
+        "# Warranty Policy\n\nDoc ID: KB-WARRANTY-001\n\n"
+        "Electronics have a 12-month limited warranty from delivery date.",
+        encoding="utf-8",
+    )
 
     index = KBIndex()
     loaded = index.load_directory(str(tmp_path))
 
-    assert loaded == 2
-    results = index.search("damaged item replacement")
+    assert loaded == 3
+    results = index.search("damaged replacement")
     assert results[0].doc_id == "KB-REFUND-001"
+    assert results[0].score > 0
+
+
+def test_search_filters_out_zero_and_negative_score_results(tmp_path):
+    (tmp_path / "refund.md").write_text(
+        "# Refund and Return Policy\n\nDoc ID: KB-REFUND-001\n\n"
+        "For damaged or defective items reported within the return window, "
+        "support may offer either a replacement or a refund review.",
+        encoding="utf-8",
+    )
+    (tmp_path / "shipping.md").write_text(
+        "# Shipping and Delivery Policy\n\nDoc ID: KB-SHIPPING-001\n\n"
+        "Most orders ship within 1 business day.",
+        encoding="utf-8",
+    )
+    (tmp_path / "warranty.md").write_text(
+        "# Warranty Policy\n\nDoc ID: KB-WARRANTY-001\n\n"
+        "Electronics have a 12-month limited warranty from delivery date.",
+        encoding="utf-8",
+    )
+
+    index = KBIndex()
+    index.load_directory(str(tmp_path))
+
+    results = index.search("damaged replacement")
+    assert all(r.score > 0 for r in results)
+    assert "KB-SHIPPING-001" not in [r.doc_id for r in results]
+    assert "KB-WARRANTY-001" not in [r.doc_id for r in results]
 
 
 def test_search_returns_empty_list_for_empty_index():
@@ -31,13 +69,28 @@ def test_ingest_adds_new_document_and_makes_it_searchable():
     index = KBIndex()
     from app.schemas.documents import DocumentIn
 
-    ids = index.ingest([DocumentIn(
-        doc_id="KB-TEST-001",
-        title="Test Doc",
-        content="This document is about a cracked earbud replacement request.",
-        source_path="test.md",
-    )])
+    ids = index.ingest([
+        DocumentIn(
+            doc_id="KB-TEST-001",
+            title="Test Doc",
+            content="This document is about a cracked earbud replacement request.",
+            source_path="test.md",
+        ),
+        DocumentIn(
+            doc_id="KB-TEST-002",
+            title="Unrelated Doc A",
+            content="This document discusses quarterly financial reporting procedures.",
+            source_path="test2.md",
+        ),
+        DocumentIn(
+            doc_id="KB-TEST-003",
+            title="Unrelated Doc B",
+            content="This document explains annual leave policy for employees.",
+            source_path="test3.md",
+        ),
+    ])
 
-    assert ids == ["KB-TEST-001"]
+    assert ids == ["KB-TEST-001", "KB-TEST-002", "KB-TEST-003"]
     results = index.search("cracked earbud")
+    assert len(results) == 1
     assert results[0].doc_id == "KB-TEST-001"

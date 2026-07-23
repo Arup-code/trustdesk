@@ -374,8 +374,15 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/auto}
       DATA_DIR: /app/data
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
     volumes: ["./data:/app/data:ro"]
-    ports: ["8000:8000"]
+    # Deliberately no `ports:` mapping — this service must only be reachable
+    # from the `backend` container on the Docker-internal network. Phase 2
+    # added a shared-secret X-Internal-Key check on every /internal/* and
+    # /documents/* route as defense-in-depth (a whole-branch review found
+    # these routes had zero auth), but the network boundary is still the
+    # primary control — do not add a ports mapping here without re-reviewing
+    # that decision.
 
   backend:
     build: ./backend
@@ -387,6 +394,7 @@ services:
       SPRING_DATASOURCE_USERNAME: trustdesk
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
       APP_AI_SERVICE_BASE_URL: http://ai-service:8000
+      APP_AI_SERVICE_INTERNAL_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       APP_JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       APP_SEED_DATA_DIR: /app/data
     volumes: ["./data:/app/data:ro"]

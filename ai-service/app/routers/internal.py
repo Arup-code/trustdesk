@@ -1,10 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.adapters import get_model_adapter
 from app.graphs.triage_graph import build_triage_graph
 from app.schemas.triage import TriageRequest, TriageResponse
+from app.security import verify_internal_key
 
-router = APIRouter(prefix="/internal")
+router = APIRouter(prefix="/internal", dependencies=[Depends(verify_internal_key)])
 _triage_graph = build_triage_graph(get_model_adapter())
 
 

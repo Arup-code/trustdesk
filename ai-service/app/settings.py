@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "openrouter/auto"
     java_base_url: str = "http://localhost:8080"
+    internal_api_key: str = "dev-internal-key-change-me"
 
 
 settings = Settings()

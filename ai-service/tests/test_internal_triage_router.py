@@ -1,8 +1,9 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.settings import settings
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-Internal-Key": settings.internal_api_key})
 
 
 def test_post_internal_triage_for_benign_ticket():
@@ -33,3 +34,11 @@ def test_post_internal_triage_for_adversarial_ticket():
     assert body["should_escalate"] is True
     assert body["guardrail_flagged"] is True
     assert body["guardrail_category"] == "identity_bypass"
+
+
+def test_internal_triage_rejects_missing_internal_key():
+    unauthenticated_client = TestClient(app)
+    response = unauthenticated_client.post("/internal/triage", json={
+        "ticket_id": "tkt_9001", "subject": "x", "body": "y",
+    })
+    assert response.status_code == 401
