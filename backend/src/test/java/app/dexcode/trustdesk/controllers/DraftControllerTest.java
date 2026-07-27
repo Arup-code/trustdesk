@@ -3,8 +3,10 @@ package app.dexcode.trustdesk.controllers;
 import app.dexcode.trustdesk.client.AiServiceClient;
 import app.dexcode.trustdesk.dto.DraftRequest;
 import app.dexcode.trustdesk.dto.DraftResponse;
+import app.dexcode.trustdesk.entities.Ticket;
 import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.DraftReplyRepository;
+import app.dexcode.trustdesk.repositories.TicketRepository;
 import app.dexcode.trustdesk.repositories.ToolActionRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Assertions;
@@ -34,6 +36,7 @@ class DraftControllerTest {
     @Autowired private DraftReplyRepository draftReplyRepository;
     @Autowired private AgentRunTraceRepository agentRunTraceRepository;
     @Autowired private ToolActionRequestRepository toolActionRequestRepository;
+    @Autowired private TicketRepository ticketRepository;
     @MockBean private AiServiceClient aiServiceClient;
 
     private String token;
@@ -48,8 +51,19 @@ class DraftControllerTest {
         token = objectMapper.readTree(body).get("token").asText();
     }
 
+    private void setTicketCategory(String ticketId, String category) {
+        Ticket ticket = ticketRepository.findById(ticketId).orElseThrow();
+        ticket.setCategory(category);
+        ticketRepository.save(ticket);
+    }
+
     @Test
     void draftPersistsReplyTraceAndPendingToolAction() throws Exception {
+        // The auto-created ToolActionRequest now goes through ToolActionService.requestAction(),
+        // which validates the ticket's category against the tool catalog (matching the real demo
+        // flow where /tickets/{id}/triage always runs before /draft-reply) -- without this, the
+        // action would fail the category check and be silently skipped rather than persisted.
+        setTicketCategory("tkt_9001", "refund");
         when(aiServiceClient.draft(any(DraftRequest.class))).thenReturn(new DraftResponse(
             "I'm sorry to hear about the damage. We can offer a replacement. [KB-REFUND-001]",
             List.of("KB-REFUND-001"),

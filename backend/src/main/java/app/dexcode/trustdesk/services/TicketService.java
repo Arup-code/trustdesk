@@ -11,16 +11,17 @@ import app.dexcode.trustdesk.entities.Customer;
 import app.dexcode.trustdesk.entities.DraftReply;
 import app.dexcode.trustdesk.entities.Order;
 import app.dexcode.trustdesk.entities.Ticket;
-import app.dexcode.trustdesk.entities.ToolActionRequest;
 import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.CustomerRepository;
 import app.dexcode.trustdesk.repositories.DraftReplyRepository;
 import app.dexcode.trustdesk.repositories.OrderRepository;
 import app.dexcode.trustdesk.repositories.TicketRepository;
-import app.dexcode.trustdesk.repositories.ToolActionRequestRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -29,13 +30,15 @@ import java.util.UUID;
 @Service
 public class TicketService {
 
+    private static final Logger log = LoggerFactory.getLogger(TicketService.class);
+
     private final TicketRepository ticketRepository;
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
     private final AiServiceClient aiServiceClient;
     private final AgentRunTraceRepository agentRunTraceRepository;
     private final DraftReplyRepository draftReplyRepository;
-    private final ToolActionRequestRepository toolActionRequestRepository;
+    private final ToolActionService toolActionService;
 
     public TicketService(
         TicketRepository ticketRepository,
@@ -44,7 +47,7 @@ public class TicketService {
         AiServiceClient aiServiceClient,
         AgentRunTraceRepository agentRunTraceRepository,
         DraftReplyRepository draftReplyRepository,
-        ToolActionRequestRepository toolActionRequestRepository
+        ToolActionService toolActionService
     ) {
         this.ticketRepository = ticketRepository;
         this.customerRepository = customerRepository;
@@ -52,7 +55,7 @@ public class TicketService {
         this.aiServiceClient = aiServiceClient;
         this.agentRunTraceRepository = agentRunTraceRepository;
         this.draftReplyRepository = draftReplyRepository;
-        this.toolActionRequestRepository = toolActionRequestRepository;
+        this.toolActionService = toolActionService;
     }
 
     public List<Ticket> listTickets() {
@@ -162,26 +165,43 @@ public class TicketService {
                 // ever recommends 0 or 1 actions, but not guaranteed by this Java code alone)
                 // never collide on the (tool_name, idempotency_key) unique constraint.
                 String idempotencyKey = draftId + "-" + i + "-" + action.toolName();
-                boolean exists = toolActionRequestRepository
-                    .findByToolNameAndIdempotencyKey(action.toolName(), idempotencyKey)
-                    .isPresent();
-                if (!exists) {
-                    ToolActionRequest toolActionRequest = ToolActionRequest.builder()
-                        .actionId(UUID.randomUUID().toString())
-                        .ticketId(ticketId)
-                        .toolName(action.toolName())
-                        .payload(Map.of("reason", action.reason()))
-                        .riskLevel("medium")
-                        .requiresHumanApproval(action.requiresHumanApproval())
-                        .status("approval_required")
-                        .idempotencyKey(idempotencyKey)
-                        .createdAt(Instant.now())
-                        .build();
-                    toolActionRequestRepository.save(toolActionRequest);
+                Map<String, Object> payload = buildToolActionPayload(action, order, idempotencyKey);
+                try {
+                    // Routes through the same catalog/category/guardrail validation gate that
+                    // POST /tool-actions enforces, rather than writing the row directly -- an
+                    // AI recommendation is exactly the "upstream" the guardrail-denial check
+                    // (ToolActionService) exists to not have to trust blindly.
+                    toolActionService.requestAction(ticketId, action.toolName(), payload);
+                } catch (ToolActionService.ToolActionValidationException | ToolActionService.ToolActionDeniedException e) {
+                    // The draft itself is still valid even if the AI's recommended action doesn't
+                    // validate against the real catalog/guardrails (e.g. missing order/item data,
+                    // or a flagged ticket) -- log and skip creating a pending action for it rather
+                    // than failing the whole draft-reply request.
+                    log.warn("Skipping recommended tool action {} for ticket {}: {}",
+                        action.toolName(), ticketId, e.getMessage());
                 }
             }
         }
 
         return response;
+    }
+
+    private Map<String, Object> buildToolActionPayload(
+        DraftResponse.RecommendedAction action, Order order, String idempotencyKey
+    ) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("reason", action.reason());
+        payload.put("idempotency_key", idempotencyKey);
+        if (order != null) {
+            payload.put("order_id", order.getOrderId());
+            payload.put("amount", order.getTotal());
+            if (order.getItems() != null && !order.getItems().isEmpty()) {
+                Object sku = order.getItems().get(0).get("sku");
+                if (sku != null) {
+                    payload.put("sku", sku);
+                }
+            }
+        }
+        return payload;
     }
 }

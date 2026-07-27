@@ -129,6 +129,35 @@ class ToolActionServiceTest {
     }
 
     @Test
+    void guardrailDenialTakesPrecedenceOverCategoryRejectionForTheSameRequest() {
+        // Regression test for a whole-branch-review finding: a coupon-injection-flagged ticket's
+        // real post-triage category is "account_security" (triage_graph.py's flagged-path
+        // default), which isn't in issue_coupon's allowed_categories either -- so if the category
+        // check ran first, the request would still be rejected, but with the wrong exception type
+        // and a misleading message, leaving the guardrail-specific denial effectively unreachable
+        // in the one flow it exists to protect. Uses "account_security" deliberately (not
+        // "general", which the other denial test uses) to prove the guardrail check, not the
+        // category check, is what fires.
+        setTicketCategory("tkt_9008", "account_security");
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9008")
+            .runType("triage")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", true, "category", "coupon_injection"))
+            .createdAt(java.time.Instant.now())
+            .build());
+
+        var ex = assertThrows(ToolActionService.ToolActionDeniedException.class, () ->
+            toolActionService.requestAction("tkt_9008", "issue_coupon", Map.of(
+                "customer_id", "cus_1003", "amount", 500, "reason", "goodwill",
+                "idempotency_key", "tkt_9008-coupon-precedence-check")));
+        assertTrue(ex.getMessage().contains("issue_coupon"));
+    }
+
+    @Test
     void requestActionAllowsOtherToolsEvenWhenTicketHasFlaggedTrace() {
         // The guardrail denial must be scoped to issue_coupon only -- a flagged trace must not
         // block an unrelated, legitimate tool like create_replacement_order.

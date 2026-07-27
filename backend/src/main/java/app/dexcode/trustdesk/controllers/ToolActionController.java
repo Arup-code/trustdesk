@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -32,6 +33,11 @@ public class ToolActionController {
         String decision,
         String reason
     ) {}
+
+    @GetMapping
+    public List<ToolActionRequest> listForTicket(@RequestParam("ticket_id") String ticketId) {
+        return toolActionService.listForTicket(ticketId);
+    }
 
     @PostMapping
     public ResponseEntity<?> requestAction(@RequestBody RequestActionBody body) {

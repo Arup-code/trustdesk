@@ -67,14 +67,22 @@ public class ToolActionService {
 
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new NoSuchElementException("Ticket not found: " + ticketId));
-        if (ticket.getCategory() == null || !definition.allowedCategories().contains(ticket.getCategory())) {
-            throw new ToolActionValidationException(
-                "Tool " + toolName + " is not allowed for category " + ticket.getCategory());
-        }
 
+        // Checked before the category allowlist so a guardrail-flagged ticket is denied for the
+        // real reason, not shadowed by a category rejection. This matters concretely: a
+        // guardrail-flagged ticket's real triage category often lands on "account_security" (the
+        // triage graph's flagged-path default), which isn't in issue_coupon's allowed_categories
+        // either -- so ordering this second would still block the request, but for the wrong,
+        // misleading reason, and would leave the security-specific denial path effectively
+        // unreachable in the one flow it exists to protect.
         if (isGuardrailFlaggedForDisallowedTool(ticketId, toolName)) {
             throw new ToolActionDeniedException(
                 "Tool " + toolName + " denied: ticket has a flagged guardrail trace");
+        }
+
+        if (ticket.getCategory() == null || !definition.allowedCategories().contains(ticket.getCategory())) {
+            throw new ToolActionValidationException(
+                "Tool " + toolName + " is not allowed for category " + ticket.getCategory());
         }
 
         String idempotencyKey = String.valueOf(payload.get("idempotency_key"));
@@ -120,6 +128,10 @@ public class ToolActionService {
         action.setStatus("approved".equals(decision) ? "approved" : "rejected");
         toolActionRequestRepository.save(action);
         return approval;
+    }
+
+    public List<ToolActionRequest> listForTicket(String ticketId) {
+        return toolActionRequestRepository.findByTicketIdOrderByCreatedAtDesc(ticketId);
     }
 
     public ToolActionRequest execute(String actionId) {
