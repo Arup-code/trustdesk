@@ -1,17 +1,23 @@
 package app.dexcode.trustdesk.services;
 
 import app.dexcode.trustdesk.client.AiServiceClient;
+import app.dexcode.trustdesk.dto.DraftRequest;
+import app.dexcode.trustdesk.dto.DraftResponse;
 import app.dexcode.trustdesk.dto.TicketDetailResponse;
 import app.dexcode.trustdesk.dto.TriageRequest;
 import app.dexcode.trustdesk.dto.TriageResponse;
 import app.dexcode.trustdesk.entities.AgentRunTrace;
 import app.dexcode.trustdesk.entities.Customer;
+import app.dexcode.trustdesk.entities.DraftReply;
 import app.dexcode.trustdesk.entities.Order;
 import app.dexcode.trustdesk.entities.Ticket;
+import app.dexcode.trustdesk.entities.ToolActionRequest;
 import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.CustomerRepository;
+import app.dexcode.trustdesk.repositories.DraftReplyRepository;
 import app.dexcode.trustdesk.repositories.OrderRepository;
 import app.dexcode.trustdesk.repositories.TicketRepository;
+import app.dexcode.trustdesk.repositories.ToolActionRequestRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -28,19 +34,25 @@ public class TicketService {
     private final OrderRepository orderRepository;
     private final AiServiceClient aiServiceClient;
     private final AgentRunTraceRepository agentRunTraceRepository;
+    private final DraftReplyRepository draftReplyRepository;
+    private final ToolActionRequestRepository toolActionRequestRepository;
 
     public TicketService(
         TicketRepository ticketRepository,
         CustomerRepository customerRepository,
         OrderRepository orderRepository,
         AiServiceClient aiServiceClient,
-        AgentRunTraceRepository agentRunTraceRepository
+        AgentRunTraceRepository agentRunTraceRepository,
+        DraftReplyRepository draftReplyRepository,
+        ToolActionRequestRepository toolActionRequestRepository
     ) {
         this.ticketRepository = ticketRepository;
         this.customerRepository = customerRepository;
         this.orderRepository = orderRepository;
         this.aiServiceClient = aiServiceClient;
         this.agentRunTraceRepository = agentRunTraceRepository;
+        this.draftReplyRepository = draftReplyRepository;
+        this.toolActionRequestRepository = toolActionRequestRepository;
     }
 
     public List<Ticket> listTickets() {
@@ -94,6 +106,75 @@ public class TicketService {
             .createdAt(Instant.now())
             .build();
         agentRunTraceRepository.save(trace);
+
+        return response;
+    }
+
+    public DraftResponse generateDraft(String ticketId) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+            .orElseThrow(() -> new NoSuchElementException("Ticket not found: " + ticketId));
+        Customer customer = ticket.getCustomerId() == null ? null :
+            customerRepository.findById(ticket.getCustomerId()).orElse(null);
+        Order order = ticket.getOrderId() == null ? null :
+            orderRepository.findById(ticket.getOrderId()).orElse(null);
+
+        DraftRequest request = new DraftRequest(
+            ticket.getTicketId(),
+            ticket.getSubject(),
+            ticket.getBody(),
+            ticket.getCategory(),
+            customer == null ? Map.of() : Map.of("tier", customer.getTier(), "verified", customer.isVerified()),
+            order == null ? Map.of() : Map.of("status", order.getStatus())
+        );
+        DraftResponse response = aiServiceClient.draft(request);
+
+        String draftId = UUID.randomUUID().toString();
+        DraftReply draftReply = DraftReply.builder()
+            .draftId(draftId)
+            .ticketId(ticketId)
+            .status(response.status())
+            .body(response.body())
+            .citations(response.citations() == null ? List.of() : response.citations())
+            .createdAt(Instant.now())
+            .build();
+        draftReplyRepository.save(draftReply);
+
+        AgentRunTrace trace = AgentRunTrace.builder()
+            .runId(UUID.randomUUID().toString())
+            .ticketId(ticketId)
+            .runType("draft_reply")
+            .status("completed")
+            .retrievedDocIds(response.retrievedDocIds() == null ? List.of() : response.retrievedDocIds())
+            .toolCalls(List.of())
+            .guardrailResults(Map.of(
+                "flagged", response.guardrailFlagged(),
+                "category", response.guardrailCategory() == null ? "" : response.guardrailCategory()))
+            .createdAt(Instant.now())
+            .build();
+        agentRunTraceRepository.save(trace);
+
+        if (response.recommendedActions() != null) {
+            for (DraftResponse.RecommendedAction action : response.recommendedActions()) {
+                String idempotencyKey = draftId + "-" + action.toolName();
+                boolean exists = toolActionRequestRepository
+                    .findByToolNameAndIdempotencyKey(action.toolName(), idempotencyKey)
+                    .isPresent();
+                if (!exists) {
+                    ToolActionRequest toolActionRequest = ToolActionRequest.builder()
+                        .actionId(UUID.randomUUID().toString())
+                        .ticketId(ticketId)
+                        .toolName(action.toolName())
+                        .payload(Map.of("reason", action.reason()))
+                        .riskLevel("medium")
+                        .requiresHumanApproval(action.requiresHumanApproval())
+                        .status("approval_required")
+                        .idempotencyKey(idempotencyKey)
+                        .createdAt(Instant.now())
+                        .build();
+                    toolActionRequestRepository.save(toolActionRequest);
+                }
+            }
+        }
 
         return response;
     }

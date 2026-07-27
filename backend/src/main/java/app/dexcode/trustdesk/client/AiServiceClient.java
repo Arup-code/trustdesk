@@ -1,5 +1,7 @@
 package app.dexcode.trustdesk.client;
 
+import app.dexcode.trustdesk.dto.DraftRequest;
+import app.dexcode.trustdesk.dto.DraftResponse;
 import app.dexcode.trustdesk.dto.TriageRequest;
 import app.dexcode.trustdesk.dto.TriageResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,5 +29,14 @@ public class AiServiceClient {
             .body(request)
             .retrieve()
             .body(TriageResponse.class);
+    }
+
+    public DraftResponse draft(DraftRequest request) {
+        return restClient.post()
+            .uri("/internal/draft")
+            .header("X-Internal-Key", internalKey)
+            .body(request)
+            .retrieve()
+            .body(DraftResponse.class);
     }
 }
