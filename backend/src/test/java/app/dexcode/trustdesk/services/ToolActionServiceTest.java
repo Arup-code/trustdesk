@@ -127,4 +127,126 @@ class ToolActionServiceTest {
                 "idempotency_key", "tkt_9006-coupon-denied")));
         assertTrue(ex.getMessage().contains("issue_coupon"));
     }
+
+    @Test
+    void requestActionAllowsOtherToolsEvenWhenTicketHasFlaggedTrace() {
+        // The guardrail denial must be scoped to issue_coupon only -- a flagged trace must not
+        // block an unrelated, legitimate tool like create_replacement_order.
+        setTicketCategory("tkt_9004", "warranty");
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9004")
+            .runType("triage")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", true, "category", "coupon_injection"))
+            .createdAt(java.time.Instant.now())
+            .build());
+
+        ToolActionRequest action = toolActionService.requestAction("tkt_9004", "create_replacement_order", Map.of(
+            "order_id", "ord_5004", "sku", "BG-TAB-10", "reason", "battery swelling",
+            "idempotency_key", "tkt_9004-replacement-despite-flag"));
+
+        assertEquals("approval_required", action.getStatus());
+    }
+
+    @Test
+    void requestActionNotDeniedWhenTraceIsNotFlagged() {
+        setTicketCategory("tkt_9002", "general");
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9002")
+            .runType("draft_reply")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", false, "category", ""))
+            .createdAt(java.time.Instant.now())
+            .build());
+
+        ToolActionRequest action = toolActionService.requestAction("tkt_9002", "issue_coupon", Map.of(
+            "customer_id", "cus_1002", "amount", 300, "reason", "shipping delay goodwill",
+            "idempotency_key", "tkt_9002-coupon-unflagged"));
+
+        assertEquals("approval_required", action.getStatus());
+    }
+
+    @Test
+    void requestActionNotDeniedWhenTicketHasNoTrace() {
+        setTicketCategory("tkt_9003", "general");
+
+        ToolActionRequest action = toolActionService.requestAction("tkt_9003", "issue_coupon", Map.of(
+            "customer_id", "cus_1004", "amount", 200, "reason", "goodwill",
+            "idempotency_key", "tkt_9003-coupon-no-trace"));
+
+        assertEquals("approval_required", action.getStatus());
+    }
+
+    @Test
+    void requestActionUsesMostRecentTraceNotOldest() {
+        // Older trace flagged, newest trace clean -- must NOT deny.
+        setTicketCategory("tkt_9005", "general");
+        java.time.Instant now = java.time.Instant.now();
+
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9005")
+            .runType("triage")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", true, "category", "coupon_injection"))
+            .createdAt(now.minusSeconds(60))
+            .build());
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9005")
+            .runType("draft_reply")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", false, "category", ""))
+            .createdAt(now)
+            .build());
+
+        ToolActionRequest action = toolActionService.requestAction("tkt_9005", "issue_coupon", Map.of(
+            "customer_id", "cus_1003", "amount", 400, "reason", "goodwill",
+            "idempotency_key", "tkt_9005-coupon-recent-clears-old-flag"));
+        assertEquals("approval_required", action.getStatus());
+    }
+
+    @Test
+    void requestActionDeniedWhenMostRecentTraceIsFlaggedEvenIfOlderTraceWasNot() {
+        // Older trace clean, newest trace flagged -- must deny. Uses a ticket not touched by any
+        // other test in this class so its trace history is deterministic regardless of test order.
+        setTicketCategory("tkt_9007", "general");
+        java.time.Instant now = java.time.Instant.now();
+
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9007")
+            .runType("triage")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", false, "category", ""))
+            .createdAt(now.minusSeconds(60))
+            .build());
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9007")
+            .runType("draft_reply")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", true, "category", "coupon_injection"))
+            .createdAt(now)
+            .build());
+
+        assertThrows(ToolActionService.ToolActionDeniedException.class, () ->
+            toolActionService.requestAction("tkt_9007", "issue_coupon", Map.of(
+                "customer_id", "cus_1006", "amount", 500, "reason", "goodwill",
+                "idempotency_key", "tkt_9007-coupon-newest-flag-wins")));
+    }
 }
