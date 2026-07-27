@@ -3,6 +3,8 @@ package app.dexcode.trustdesk.controllers;
 import app.dexcode.trustdesk.client.AiServiceClient;
 import app.dexcode.trustdesk.dto.DraftRequest;
 import app.dexcode.trustdesk.dto.DraftResponse;
+import app.dexcode.trustdesk.dto.TriageRequest;
+import app.dexcode.trustdesk.dto.TriageResponse;
 import app.dexcode.trustdesk.entities.Ticket;
 import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.DraftReplyRepository;
@@ -96,7 +98,48 @@ class DraftControllerTest {
     }
 
     @Test
+    void draftBeforeTriageStillCreatesPendingToolAction() throws Exception {
+        // Regression test for a whole-branch-review finding: routing the auto-created
+        // ToolActionRequest through ToolActionService.requestAction() (which requires a real,
+        // persisted ticket category) would otherwise silently re-drop the Must-Have
+        // create_replacement_order recommendation whenever draft-reply is called before triage --
+        // exactly the ordering-independence Phase 3's draft graph itself was fixed to guarantee.
+        // tkt_9008 is untriaged at the start of this test (category is null; DataSeeder never
+        // sets it, only runTriage() does).
+        when(aiServiceClient.triage(any(TriageRequest.class))).thenReturn(new TriageResponse(
+            "refund", "medium", "frustrated", false,
+            "Damaged item reported within return window.", false, null));
+        when(aiServiceClient.draft(any(DraftRequest.class))).thenReturn(new DraftResponse(
+            "I'm sorry to hear about the damage. We can offer a replacement. [KB-REFUND-001]",
+            List.of("KB-REFUND-001"),
+            List.of(new DraftResponse.RecommendedAction(
+                "create_replacement_order", true, "Damaged item reported within policy window.")),
+            "generated",
+            List.of("KB-REFUND-001"),
+            false,
+            null));
+
+        mockMvc.perform(post("/tickets/tkt_9008/draft-reply")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("generated"));
+
+        Ticket ticket = ticketRepository.findById("tkt_9008").orElseThrow();
+        Assertions.assertEquals("refund", ticket.getCategory());
+
+        var pendingActions = toolActionRequestRepository.findAll();
+        Assertions.assertTrue(pendingActions.stream().anyMatch(
+            a -> "tkt_9008".equals(a.getTicketId())
+                && "create_replacement_order".equals(a.getToolName())
+                && "approval_required".equals(a.getStatus())));
+    }
+
+    @Test
     void draftWithNoRecommendedActionsCreatesNoToolActionRequest() throws Exception {
+        // Pre-set the category so this test exercises only the "no recommended actions" behavior
+        // it's named for, not the separate implicit-triage path covered by
+        // draftBeforeTriageStillCreatesPendingToolAction above.
+        setTicketCategory("tkt_9007", "account_security");
         when(aiServiceClient.draft(any(DraftRequest.class))).thenReturn(new DraftResponse(
             "I'm unable to confidently answer this request and have escalated it to a human specialist.",
             List.of(),

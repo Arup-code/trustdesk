@@ -116,6 +116,22 @@ public class TicketService {
     public DraftResponse generateDraft(String ticketId) {
         Ticket ticket = ticketRepository.findById(ticketId)
             .orElseThrow(() -> new NoSuchElementException("Ticket not found: " + ticketId));
+
+        if (ticket.getCategory() == null) {
+            // Drafting can legitimately be requested before triage has run (DataSeeder never
+            // populates category, only runTriage() does). The draft graph's own recommend_tool
+            // node already handles this by self-classifying via a fallback model call when no
+            // category is supplied -- but that classification never used to reach the ticket
+            // row, so requestAction()'s category-allowlist check below would reject the
+            // recommendation regardless, silently dropping the Must-Have create_replacement_order
+            // action. Running triage implicitly here means the ticket always has a real,
+            // persisted category by the time that check runs, matching what the demo flow
+            // (triage, then draft) already produces.
+            runTriage(ticketId);
+            ticket = ticketRepository.findById(ticketId)
+                .orElseThrow(() -> new NoSuchElementException("Ticket not found: " + ticketId));
+        }
+
         Customer customer = ticket.getCustomerId() == null ? null :
             customerRepository.findById(ticket.getCustomerId()).orElse(null);
         Order order = ticket.getOrderId() == null ? null :
