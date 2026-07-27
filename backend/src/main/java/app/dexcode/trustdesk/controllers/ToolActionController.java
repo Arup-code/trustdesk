@@ -43,6 +43,8 @@ public class ToolActionController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
+        } catch (ToolActionService.ToolActionDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
     }
 

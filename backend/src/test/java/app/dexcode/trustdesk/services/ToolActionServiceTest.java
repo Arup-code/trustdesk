@@ -21,6 +21,7 @@ class ToolActionServiceTest {
     @Autowired private ToolActionService toolActionService;
     @Autowired private TicketRepository ticketRepository;
     @Autowired private ToolActionRequestRepository toolActionRequestRepository;
+    @Autowired private app.dexcode.trustdesk.repositories.AgentRunTraceRepository agentRunTraceRepository;
 
     private void setTicketCategory(String ticketId, String category) {
         Ticket ticket = ticketRepository.findById(ticketId).orElseThrow();
@@ -104,5 +105,26 @@ class ToolActionServiceTest {
         assertEquals(
             executed.getResult().get("replacement_order_id"),
             reExecuted.getResult().get("replacement_order_id"));
+    }
+
+    @Test
+    void requestActionDeniedWhenTicketHasFlaggedGuardrailTraceAndToolIsIssueCoupon() {
+        setTicketCategory("tkt_9006", "general");
+        agentRunTraceRepository.save(app.dexcode.trustdesk.entities.AgentRunTrace.builder()
+            .runId(java.util.UUID.randomUUID().toString())
+            .ticketId("tkt_9006")
+            .runType("draft_reply")
+            .status("completed")
+            .retrievedDocIds(java.util.List.of())
+            .toolCalls(java.util.List.of())
+            .guardrailResults(Map.of("flagged", true, "category", "coupon_injection"))
+            .createdAt(java.time.Instant.now())
+            .build());
+
+        var ex = assertThrows(ToolActionService.ToolActionDeniedException.class, () ->
+            toolActionService.requestAction("tkt_9006", "issue_coupon", Map.of(
+                "customer_id", "cus_1006", "amount", 500, "reason", "goodwill",
+                "idempotency_key", "tkt_9006-coupon-denied")));
+        assertTrue(ex.getMessage().contains("issue_coupon"));
     }
 }

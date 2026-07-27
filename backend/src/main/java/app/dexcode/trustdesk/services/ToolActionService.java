@@ -1,9 +1,11 @@
 package app.dexcode.trustdesk.services;
 
 import app.dexcode.trustdesk.config.ToolCatalog;
+import app.dexcode.trustdesk.entities.AgentRunTrace;
 import app.dexcode.trustdesk.entities.Approval;
 import app.dexcode.trustdesk.entities.Ticket;
 import app.dexcode.trustdesk.entities.ToolActionRequest;
+import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.ApprovalRepository;
 import app.dexcode.trustdesk.repositories.TicketRepository;
 import app.dexcode.trustdesk.repositories.ToolActionRequestRepository;
@@ -11,6 +13,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -22,17 +26,20 @@ public class ToolActionService {
     private final ToolActionRequestRepository toolActionRequestRepository;
     private final TicketRepository ticketRepository;
     private final ApprovalRepository approvalRepository;
+    private final AgentRunTraceRepository agentRunTraceRepository;
 
     public ToolActionService(
         ToolCatalog toolCatalog,
         ToolActionRequestRepository toolActionRequestRepository,
         TicketRepository ticketRepository,
-        ApprovalRepository approvalRepository
+        ApprovalRepository approvalRepository,
+        AgentRunTraceRepository agentRunTraceRepository
     ) {
         this.toolCatalog = toolCatalog;
         this.toolActionRequestRepository = toolActionRequestRepository;
         this.ticketRepository = ticketRepository;
         this.approvalRepository = approvalRepository;
+        this.agentRunTraceRepository = agentRunTraceRepository;
     }
 
     public static class ToolActionValidationException extends RuntimeException {
@@ -41,6 +48,10 @@ public class ToolActionService {
 
     public static class InvalidToolActionStateException extends RuntimeException {
         public InvalidToolActionStateException(String message) { super(message); }
+    }
+
+    public static class ToolActionDeniedException extends RuntimeException {
+        public ToolActionDeniedException(String message) { super(message); }
     }
 
     public ToolActionRequest requestAction(String ticketId, String toolName, Map<String, Object> payload) {
@@ -59,6 +70,11 @@ public class ToolActionService {
         if (ticket.getCategory() == null || !definition.allowedCategories().contains(ticket.getCategory())) {
             throw new ToolActionValidationException(
                 "Tool " + toolName + " is not allowed for category " + ticket.getCategory());
+        }
+
+        if (isGuardrailFlaggedForDisallowedTool(ticketId, toolName)) {
+            throw new ToolActionDeniedException(
+                "Tool " + toolName + " denied: ticket has a flagged guardrail trace");
         }
 
         String idempotencyKey = String.valueOf(payload.get("idempotency_key"));
@@ -126,5 +142,20 @@ public class ToolActionService {
         action.setResult(result);
         action.setStatus("executed");
         return toolActionRequestRepository.save(action);
+    }
+
+    private boolean isGuardrailFlaggedForDisallowedTool(String ticketId, String toolName) {
+        if (!"issue_coupon".equals(toolName)) {
+            return false;
+        }
+        List<AgentRunTrace> traces = agentRunTraceRepository.findAll().stream()
+            .filter(t -> ticketId.equals(t.getTicketId()))
+            .sorted(Comparator.comparing(AgentRunTrace::getCreatedAt).reversed())
+            .toList();
+        if (traces.isEmpty()) {
+            return false;
+        }
+        Object flagged = traces.get(0).getGuardrailResults().get("flagged");
+        return Boolean.TRUE.equals(flagged);
     }
 }
