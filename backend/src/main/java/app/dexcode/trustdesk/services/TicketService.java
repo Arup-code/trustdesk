@@ -154,8 +154,14 @@ public class TicketService {
         agentRunTraceRepository.save(trace);
 
         if (response.recommendedActions() != null) {
-            for (DraftResponse.RecommendedAction action : response.recommendedActions()) {
-                String idempotencyKey = draftId + "-" + action.toolName();
+            List<DraftResponse.RecommendedAction> recommendedActions = response.recommendedActions();
+            for (int i = 0; i < recommendedActions.size(); i++) {
+                DraftResponse.RecommendedAction action = recommendedActions.get(i);
+                // Includes the loop index so two recommendations for the same tool in one
+                // draft response (not possible with the current Python draft graph, which only
+                // ever recommends 0 or 1 actions, but not guaranteed by this Java code alone)
+                // never collide on the (tool_name, idempotency_key) unique constraint.
+                String idempotencyKey = draftId + "-" + i + "-" + action.toolName();
                 boolean exists = toolActionRequestRepository
                     .findByToolNameAndIdempotencyKey(action.toolName(), idempotencyKey)
                     .isPresent();

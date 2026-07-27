@@ -82,6 +82,32 @@ class DraftControllerTest {
     }
 
     @Test
+    void draftWithNoRecommendedActionsCreatesNoToolActionRequest() throws Exception {
+        when(aiServiceClient.draft(any(DraftRequest.class))).thenReturn(new DraftResponse(
+            "I'm unable to confidently answer this request and have escalated it to a human specialist.",
+            List.of(),
+            List.of(),
+            "escalated",
+            List.of(),
+            false,
+            null));
+
+        mockMvc.perform(post("/tickets/tkt_9007/draft-reply")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("escalated"));
+
+        var drafts = draftReplyRepository.findAll();
+        Assertions.assertTrue(drafts.stream().anyMatch(
+            d -> "tkt_9007".equals(d.getTicketId()) && "escalated".equals(d.getStatus())));
+
+        var pendingActionsForTicket = toolActionRequestRepository.findAll().stream()
+            .filter(a -> "tkt_9007".equals(a.getTicketId()))
+            .toList();
+        Assertions.assertTrue(pendingActionsForTicket.isEmpty());
+    }
+
+    @Test
     void draftReturns404ForUnknownTicket() throws Exception {
         mockMvc.perform(post("/tickets/does-not-exist/draft-reply")
                 .header("Authorization", "Bearer " + token))
