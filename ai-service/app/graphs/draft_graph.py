@@ -55,7 +55,19 @@ def build_draft_graph(model_adapter: ModelAdapter, kb_index: KBIndex):
         return {"citations": citations}
 
     def recommend_tool_node(state: DraftState) -> dict:
-        recommendation = recommend_tool(state.get("category") or "", state["ticket_text"])
+        # Java only has a ticket's `category` once /tickets/{id}/triage has run --
+        # DataSeeder never populates it, only runTriage() does. Drafting is a
+        # separate endpoint that can legitimately be called before triage (an
+        # agent could click "draft" first), so relying solely on the caller-
+        # supplied category would silently drop the Must-Have
+        # create_replacement_order recommendation whenever that happens. Fall
+        # back to classifying the ticket ourselves -- safe to call the model
+        # here since this node is only reached on the non-flagged, grounded
+        # path (guardrail_precheck and ground_check have already passed).
+        category = state.get("category")
+        if not category:
+            category = model_adapter.classify(state["ticket_text"], state.get("context", {})).get("category", "")
+        recommendation = recommend_tool(category, state["ticket_text"])
         return {"recommended_actions": [recommendation] if recommendation else []}
 
     def postcheck_node(state: DraftState) -> dict:
