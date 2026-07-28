@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.adapters import get_model_adapter
+from app.eval.eval_runner import run_eval
 from app.graphs.draft_graph import build_draft_graph
 from app.graphs.triage_graph import build_triage_graph
 from app.routers import documents
@@ -46,3 +47,8 @@ def draft(request: DraftRequest) -> DraftResponse:
         guardrail_flagged=result.get("guardrail_flagged", False),
         guardrail_category=result.get("guardrail_category"),
     )
+
+
+@router.post("/eval-runs/run")
+def run_eval_endpoint() -> dict:
+    return run_eval()

@@ -2,6 +2,7 @@ package app.dexcode.trustdesk.client;
 
 import app.dexcode.trustdesk.dto.DraftRequest;
 import app.dexcode.trustdesk.dto.DraftResponse;
+import app.dexcode.trustdesk.dto.EvalRunResult;
 import app.dexcode.trustdesk.dto.TriageRequest;
 import app.dexcode.trustdesk.dto.TriageResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,5 +39,13 @@ public class AiServiceClient {
             .body(request)
             .retrieve()
             .body(DraftResponse.class);
+    }
+
+    public EvalRunResult runEval() {
+        return restClient.post()
+            .uri("/internal/eval-runs/run")
+            .header("X-Internal-Key", internalKey)
+            .retrieve()
+            .body(EvalRunResult.class);
     }
 }
