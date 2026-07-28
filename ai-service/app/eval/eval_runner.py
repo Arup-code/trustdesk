@@ -68,44 +68,82 @@ def run_eval(
         kb_index_instance.load_directory(f"{settings.data_dir}/knowledge_base")
     fetch_ticket = fetch_ticket or _default_fetch_ticket_factory()
 
+    # No cases to score (e.g. a misconfigured cases_path or an empty override file in
+    # a test) -- report a well-formed zero-case result instead of letting every
+    # `sum(...) / total` below raise ZeroDivisionError. All five metrics default to
+    # 0.0 (not None) so callers can always treat `metrics` values as floats.
+    if not cases:
+        return {
+            "total_cases": 0,
+            "metrics": {
+                "triage_accuracy": 0.0,
+                "priority_accuracy": 0.0,
+                "citation_coverage": 0.0,
+                "unsafe_action_block_rate": 0.0,
+                "escalation_accuracy": 0.0,
+            },
+            "case_results": [],
+        }
+
     triage_graph = build_triage_graph(model_adapter)
     draft_graph = build_draft_graph(model_adapter, kb_index_instance)
 
     case_results = []
     for case in cases:
-        expected = case["expected"]
-        ticket = fetch_ticket(case["ticket_id"])
-        ticket_text = f"{ticket['subject']}\n{ticket['body']}"
-        context = {"customer": ticket.get("customer") or {}, "order": ticket.get("order") or {}}
+        try:
+            expected = case["expected"]
+            ticket = fetch_ticket(case["ticket_id"])
+            ticket_text = f"{ticket['subject']}\n{ticket['body']}"
+            context = {"customer": ticket.get("customer") or {}, "order": ticket.get("order") or {}}
 
-        triage_result = triage_graph.invoke({"ticket_text": ticket_text, "context": context})
-        draft_result = draft_graph.invoke({
-            "ticket_text": ticket_text,
-            "context": context,
-            "category": triage_result.get("category"),
-        })
+            triage_result = triage_graph.invoke({"ticket_text": ticket_text, "context": context})
+            draft_result = draft_graph.invoke({
+                "ticket_text": ticket_text,
+                "context": context,
+                "category": triage_result.get("category"),
+            })
 
-        category_match = triage_result.get("category") == expected.get("category")
-        priority_match = triage_result.get("priority") == expected.get("priority")
-        must_cite = set(expected.get("must_cite_doc_ids", []))
-        citations = set(draft_result.get("citations", []))
-        citation_ok = must_cite.issubset(citations)
-        disallowed = set(expected.get("disallowed_actions", []))
-        recommended = {a["tool_name"] for a in draft_result.get("recommended_actions", [])}
-        unsafe_ok = disallowed.isdisjoint(recommended)
-        escalation_match = triage_result.get("should_escalate") == expected.get("should_escalate")
+            category_match = triage_result.get("category") == expected.get("category")
+            priority_match = triage_result.get("priority") == expected.get("priority")
+            must_cite = set(expected.get("must_cite_doc_ids", []))
+            citations = set(draft_result.get("citations", []))
+            citation_ok = must_cite.issubset(citations)
+            disallowed = set(expected.get("disallowed_actions", []))
+            recommended = {a["tool_name"] for a in draft_result.get("recommended_actions", [])}
+            unsafe_ok = disallowed.isdisjoint(recommended)
+            escalation_match = triage_result.get("should_escalate") == expected.get("should_escalate")
 
-        case_results.append({
-            "case_id": case["case_id"],
-            "ticket_id": case["ticket_id"],
-            "category_match": category_match,
-            "priority_match": priority_match,
-            "citation_ok": citation_ok,
-            "unsafe_ok": unsafe_ok,
-            "escalation_match": escalation_match,
-            "passed": category_match and priority_match and citation_ok
-                      and unsafe_ok and escalation_match,
-        })
+            case_results.append({
+                "case_id": case["case_id"],
+                "ticket_id": case["ticket_id"],
+                "category_match": category_match,
+                "priority_match": priority_match,
+                "citation_ok": citation_ok,
+                "unsafe_ok": unsafe_ok,
+                "escalation_match": escalation_match,
+                "passed": category_match and priority_match and citation_ok
+                          and unsafe_ok and escalation_match,
+            })
+        except Exception as exc:  # noqa: BLE001 -- deliberately broad: one bad case
+            # (fetch_ticket network blip, deleted ticket, malformed case row, graph
+            # error, ...) must not abort the whole eval run and lose every other
+            # case's results. The case is still counted in total_cases and in every
+            # metric's denominator -- it contributes False/0 to each match flag below,
+            # i.e. an error is scored the same as a wrong answer, not excluded from
+            # the accuracy calculation. This keeps "total_cases" meaning "every case
+            # in the file was attempted" rather than "every case that happened to
+            # succeed".
+            case_results.append({
+                "case_id": case.get("case_id"),
+                "ticket_id": case.get("ticket_id"),
+                "error": str(exc),
+                "category_match": False,
+                "priority_match": False,
+                "citation_ok": False,
+                "unsafe_ok": False,
+                "escalation_match": False,
+                "passed": False,
+            })
 
     total = len(case_results)
     metrics = {

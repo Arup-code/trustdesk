@@ -51,4 +51,6 @@ def draft(request: DraftRequest) -> DraftResponse:
 
 @router.post("/eval-runs/run")
 def run_eval_endpoint() -> dict:
-    return run_eval()
+    # Reuse the KB index this module already built for `_draft_graph` instead of
+    # letting run_eval() load a second copy from disk on every call.
+    return run_eval(kb_index_instance=documents.kb_index)
