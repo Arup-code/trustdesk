@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { login, setToken, ApiError } from "../api/client";
+import { login, setToken, setUsername as persistUsername, ApiError } from "../api/client";
 
 export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [username, setUsername] = useState("agent1");
@@ -14,6 +14,7 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
     try {
       const response = await login(username, password);
       setToken(response.token);
+      persistUsername(response.username);
       onLoggedIn();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed");

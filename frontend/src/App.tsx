@@ -1,6 +1,6 @@
 import { useState } from "react";
 import "./App.css";
-import { getToken, clearToken } from "./api/client";
+import { getToken, clearToken, clearUsername } from "./api/client";
 import { Login } from "./pages/Login";
 import { TicketQueue } from "./pages/TicketQueue";
 import { TicketDetail } from "./pages/TicketDetail";
@@ -24,6 +24,7 @@ function App() {
         <button
           onClick={() => {
             clearToken();
+            clearUsername();
             setLoggedIn(false);
           }}
         >

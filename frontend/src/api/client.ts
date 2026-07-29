@@ -1,5 +1,6 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 const TOKEN_STORAGE_KEY = "trustdesk_token";
+const USERNAME_STORAGE_KEY = "trustdesk_username";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -11,6 +12,18 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+export function getUsername(): string | null {
+  return localStorage.getItem(USERNAME_STORAGE_KEY);
+}
+
+export function setUsername(username: string): void {
+  localStorage.setItem(USERNAME_STORAGE_KEY, username);
+}
+
+export function clearUsername(): void {
+  localStorage.removeItem(USERNAME_STORAGE_KEY);
 }
 
 export class ApiError extends Error {

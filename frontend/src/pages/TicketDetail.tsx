@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiFetch } from "../api/client";
+import { apiFetch, getUsername } from "../api/client";
 import type { DraftResponse, TicketDetail as TicketDetailType, ToolActionRequest, TriageResponse } from "../api/types";
 
 export function TicketDetail({ ticketId, onBack }: { ticketId: string; onBack: () => void }) {
@@ -64,7 +64,7 @@ export function TicketDetail({ ticketId, onBack }: { ticketId: string; onBack: (
     try {
       await apiFetch(`/tool-actions/${actionId}/approve`, {
         method: "POST",
-        body: JSON.stringify({ reviewer_id: "agent1", decision, reason: "Reviewed via UI" }),
+        body: JSON.stringify({ reviewer_id: getUsername() ?? "unknown", decision, reason: "Reviewed via UI" }),
       });
       loadPendingActions();
     } catch (err) {
