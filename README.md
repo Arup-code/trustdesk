@@ -157,7 +157,7 @@ login.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/tool-actions?ticket_id={id}` | List tool-action requests for a ticket. |
-| POST | `/tool-actions` | Request a tool action (`{ticket_id, tool_name, payload}`); validated against `data/tool_actions.json`, blocked if the ticket's most recent guardrail trace flagged it, idempotent on `(tool_name, idempotency_key)`. |
+| POST | `/tool-actions` | Request a tool action (`{ticket_id, tool_name, payload}`); validated against `data/tool_actions.json`, blocked if the tool is `issue_coupon` and the ticket's most recent guardrail trace flagged it (this check is currently scoped to that one tool), idempotent on `(tool_name, idempotency_key)`. |
 | POST | `/tool-actions/{id}/approve` | Human approval/rejection (`{reviewer_id, decision, reason}`); only valid from `approval_required` status. |
 | POST | `/tool-actions/{id}/execute` | Executes an `approved` action; re-calling on an already-`executed` action is a no-op that returns the existing result. |
 
@@ -251,6 +251,13 @@ characteristic of scoring against `MockModelAdapter` rather than a live LLM, not
   the host fails to connect against the running containers). Every one of its routes is *also*
   gated by an `X-Internal-Key` header check (`ai-service/app/security.py`), so network isolation
   and the shared-secret check are deliberately layered as defense-in-depth, not either one alone.
+- **The eval runner authenticates to the backend as a demo agent, not just via the internal key.**
+  `ai-service/app/eval/eval_runner.py` logs in with `EVAL_JAVA_USERNAME`/`EVAL_JAVA_PASSWORD`
+  (`ai-service/app/settings.py`, defaulting to the seeded `agent1`/`agent123`) to obtain a real JWT
+  and call the backend's protected `GET /tickets/{id}` for ticket context — this gives `ai-service`
+  an authenticated backend identity distinct from the `X-Internal-Key` shared secret used
+  elsewhere. A dedicated read-only service account (rather than reusing a demo human user's
+  credentials) would be the production-hardened shape of this credential.
 - **RBAC is not enforced.** The JWT issued by `/auth/login` carries a `role` claim
   (`support_agent` or `support_manager`), but no controller uses `@PreAuthorize` or any other
   role check — any authenticated user can call any endpoint regardless of role. Auth is
