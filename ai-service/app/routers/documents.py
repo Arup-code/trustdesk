@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends
 
+from app.adapters import get_embedding_adapter
 from app.retrieval.kb_index import KBIndex
 from app.schemas.documents import IngestRequest, IngestResponse, SearchResponse
 from app.security import verify_internal_key
 from app.settings import settings
 
 router = APIRouter(dependencies=[Depends(verify_internal_key)])
-kb_index = KBIndex()
+kb_index = KBIndex(get_embedding_adapter(), similarity_threshold=settings.embedding_similarity_threshold)
 kb_index.load_directory(f"{settings.data_dir}/knowledge_base")
 
 

@@ -1,14 +1,21 @@
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+import chromadb
 from rank_bm25 import BM25Okapi
 
+from app.adapters.embedding_adapter import EmbeddingAdapter
 from app.retrieval.lexical import raw_idf, tokenize
 from app.schemas.documents import DocumentIn, SearchResult
 
 _DOC_ID_PATTERN = re.compile(r"^Doc ID:\s*(\S+)", re.MULTILINE)
 _TITLE_PATTERN = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+
+_RRF_K = 60
+_DEFAULT_SIMILARITY_THRESHOLD = 0.35
 
 
 def _zero_out_floored_idf(bm25: BM25Okapi, corpus: list[list[str]]) -> None:
@@ -35,6 +42,18 @@ def _zero_out_floored_idf(bm25: BM25Okapi, corpus: list[list[str]]) -> None:
             bm25.idf[term] = 0.0
 
 
+def _rrf_fuse(*ranked_lists: list[str]) -> dict[str, float]:
+    """Reciprocal Rank Fusion: combine several ranked doc_id lists into one
+    score per doc_id, using each list's *rank* rather than its raw score --
+    BM25 scores and cosine similarities live on unrelated scales, so fusing
+    by rank avoids having to normalize them against each other."""
+    scores: dict[str, float] = {}
+    for ranked_ids in ranked_lists:
+        for rank, doc_id in enumerate(ranked_ids, start=1):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (_RRF_K + rank)
+    return scores
+
+
 @dataclass
 class _Document:
     doc_id: str
@@ -43,10 +62,17 @@ class _Document:
 
 
 class KBIndex:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        embedding_adapter: EmbeddingAdapter,
+        similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
+    ) -> None:
+        self._embedding_adapter = embedding_adapter
+        self._similarity_threshold = similarity_threshold
         self._documents: dict[str, _Document] = {}
         self._bm25: BM25Okapi | None = None
         self._doc_order: list[str] = []
+        self._chroma_collection: Any = None
 
     def load_directory(self, directory: str) -> int:
         path = Path(directory)
@@ -79,25 +105,75 @@ class KBIndex:
         corpus = [tokenize(self._documents[doc_id].content) for doc_id in self._doc_order]
         if not corpus:
             self._bm25 = None
+            self._chroma_collection = None
             return
         bm25 = BM25Okapi(corpus)
         _zero_out_floored_idf(bm25, corpus)
         self._bm25 = bm25
 
+        contents = [self._documents[doc_id].content for doc_id in self._doc_order]
+        embeddings = self._embedding_adapter.embed_documents(contents)
+        client = chromadb.EphemeralClient()
+        # chromadb.EphemeralClient() shares one process-wide in-memory system
+        # across every instance it creates -- its "system identifier" is
+        # hardcoded to the literal string "ephemeral" regardless of how many
+        # separate EphemeralClient() calls are made (see chromadb's
+        # SharedSystemClient._get_identifier_from_settings). A fixed
+        # collection name like "kb_docs" would therefore resolve to the same
+        # underlying collection across *every* KBIndex instance -- and every
+        # rebuild of the same instance -- in one process, causing dimension
+        # mismatches and stale documents leaking between unrelated indexes
+        # (e.g. between two different tests, or between a router's
+        # long-lived singleton and a test's throwaway index). Giving each
+        # rebuild its own uniquely named collection keeps every KBIndex's
+        # embedding data fully isolated.
+        collection = client.create_collection(
+            name=f"kb_docs_{uuid.uuid4().hex}", metadata={"hnsw:space": "cosine"},
+        )
+        collection.add(ids=self._doc_order, embeddings=embeddings, documents=contents)
+        self._chroma_collection = collection
+
+    def _bm25_ranked_ids(self, query: str, k: int) -> list[str]:
+        scores = self._bm25.get_scores(tokenize(query))
+        ranked = sorted(zip(self._doc_order, scores), key=lambda pair: pair[1], reverse=True)
+        return [doc_id for doc_id, score in ranked if score > 0][:k]
+
+    def _embedding_ranked_ids(self, query: str, k: int) -> list[str]:
+        if self._chroma_collection is None:
+            return []
+        query_embedding = self._embedding_adapter.embed_query(query)
+        if not any(query_embedding):
+            # A zero vector means the query carried no discriminative signal
+            # (e.g. every token was near-universal and got zero-floored) --
+            # skip nearest-neighbor search rather than returning an
+            # arbitrary "closest" doc for a query that matches nothing.
+            return []
+        n_results = min(k, len(self._doc_order))
+        result = self._chroma_collection.query(query_embeddings=[query_embedding], n_results=n_results)
+        ranked_ids = []
+        for doc_id, distance in zip(result["ids"][0], result["distances"][0]):
+            similarity = 1 - distance
+            if similarity >= self._similarity_threshold:
+                ranked_ids.append(doc_id)
+        return ranked_ids
+
     def search(self, query: str, k: int = 5) -> list[SearchResult]:
         if not self._bm25 or not self._doc_order:
             return []
-        scores = self._bm25.get_scores(tokenize(query))
-        ranked = sorted(zip(self._doc_order, scores), key=lambda pair: pair[1], reverse=True)
+
+        bm25_ranked_ids = self._bm25_ranked_ids(query, k)
+        embedding_ranked_ids = self._embedding_ranked_ids(query, k)
+
+        fused_scores = _rrf_fuse(bm25_ranked_ids, embedding_ranked_ids)
+        top_ids = sorted(fused_scores, key=lambda doc_id: fused_scores[doc_id], reverse=True)[:k]
+
         results = []
-        for doc_id, score in ranked[:k]:
-            if score <= 0:
-                continue
+        for doc_id in top_ids:
             doc = self._documents[doc_id]
             results.append(SearchResult(
                 doc_id=doc.doc_id,
                 title=doc.title,
                 snippet=doc.content[:200].replace("\n", " ").strip(),
-                score=round(float(score), 4),
+                score=round(fused_scores[doc_id], 4),
             ))
         return results

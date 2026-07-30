@@ -1,4 +1,8 @@
-from app.retrieval.kb_index import KBIndex
+import pytest
+
+from app.adapters.mock_embedding_adapter import MockEmbeddingAdapter
+from app.retrieval.kb_index import KBIndex, _rrf_fuse
+from app.schemas.documents import DocumentIn
 
 
 def test_search_ranks_relevant_doc_first(tmp_path):
@@ -24,7 +28,7 @@ def test_search_ranks_relevant_doc_first(tmp_path):
         encoding="utf-8",
     )
 
-    index = KBIndex()
+    index = KBIndex(MockEmbeddingAdapter())
     loaded = index.load_directory(str(tmp_path))
 
     assert loaded == 3
@@ -51,7 +55,7 @@ def test_search_filters_out_zero_and_negative_score_results(tmp_path):
         encoding="utf-8",
     )
 
-    index = KBIndex()
+    index = KBIndex(MockEmbeddingAdapter())
     index.load_directory(str(tmp_path))
 
     results = index.search("damaged replacement")
@@ -61,7 +65,7 @@ def test_search_filters_out_zero_and_negative_score_results(tmp_path):
 
 
 def test_search_returns_empty_list_for_empty_index():
-    index = KBIndex()
+    index = KBIndex(MockEmbeddingAdapter())
     assert index.search("anything") == []
 
 
@@ -73,6 +77,10 @@ def test_search_ignores_terms_common_to_more_than_half_the_corpus(tmp_path):
     # "customer") must not retrieve anything, exactly like a query built from
     # words absent from the corpus entirely. This must hold for whatever
     # words happen to be common in a given corpus, not a hand-picked list.
+    # MockEmbeddingAdapter applies the same zero-floored raw-IDF weighting
+    # (app.retrieval.lexical.raw_idf) to near-universal terms, so this test
+    # now also proves the embedding branch doesn't leak a false-positive
+    # "closest" doc for a query with no genuine signal in either branch.
     for name, unique_word in [
         ("a", "alpha"), ("b", "bravo"), ("c", "charlie"), ("d", "delta"),
     ]:
@@ -82,7 +90,7 @@ def test_search_ignores_terms_common_to_more_than_half_the_corpus(tmp_path):
             encoding="utf-8",
         )
 
-    index = KBIndex()
+    index = KBIndex(MockEmbeddingAdapter())
     index.load_directory(str(tmp_path))
 
     # every document shares "customer support policy about" -- a query using
@@ -97,8 +105,7 @@ def test_search_ignores_terms_common_to_more_than_half_the_corpus(tmp_path):
 
 
 def test_ingest_adds_new_document_and_makes_it_searchable():
-    index = KBIndex()
-    from app.schemas.documents import DocumentIn
+    index = KBIndex(MockEmbeddingAdapter())
 
     ids = index.ingest([
         DocumentIn(
@@ -125,3 +132,48 @@ def test_ingest_adds_new_document_and_makes_it_searchable():
     results = index.search("cracked earbud")
     assert len(results) == 1
     assert results[0].doc_id == "KB-TEST-001"
+
+
+def test_rrf_fuse_combines_ranks_from_both_lists():
+    bm25_ranked = ["KB-X-001", "KB-Y-001"]
+    embedding_ranked = ["KB-Y-001", "KB-X-001", "KB-Z-001"]
+
+    scores = _rrf_fuse(bm25_ranked, embedding_ranked)
+
+    assert scores["KB-X-001"] == pytest.approx(1 / 61 + 1 / 62)
+    assert scores["KB-Y-001"] == pytest.approx(1 / 62 + 1 / 61)
+    assert scores["KB-Z-001"] == pytest.approx(1 / 63)
+    assert scores["KB-X-001"] == pytest.approx(scores["KB-Y-001"])
+
+
+def test_embedding_branch_surfaces_a_match_bm25_misses():
+    class _FixedVectorEmbeddingAdapter:
+        def __init__(self, vectors: dict[str, list[float]]):
+            self._vectors = vectors
+
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [self._vectors[text] for text in texts]
+
+        def embed_query(self, text: str) -> list[float]:
+            return self._vectors[text]
+
+    doc_a_content = "Large mammals graze together across savanna landscapes."
+    doc_b_content = "Quarterly financial reporting procedures for vendors."
+    query = "striped equine herd behavior"
+
+    adapter = _FixedVectorEmbeddingAdapter({
+        doc_a_content: [1.0, 0.0],
+        doc_b_content: [0.0, 1.0],
+        query: [1.0, 0.0],
+    })
+
+    index = KBIndex(adapter)
+    index.ingest([
+        DocumentIn(doc_id="KB-A-001", title="Doc A", content=doc_a_content, source_path="a.md"),
+        DocumentIn(doc_id="KB-B-001", title="Doc B", content=doc_b_content, source_path="b.md"),
+    ])
+
+    results = index.search(query)
+
+    assert [r.doc_id for r in results] == ["KB-A-001"]
+    assert results[0].score > 0

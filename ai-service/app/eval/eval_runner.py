@@ -3,7 +3,7 @@ from typing import Callable
 
 import httpx
 
-from app.adapters import get_model_adapter
+from app.adapters import get_embedding_adapter, get_model_adapter
 from app.graphs.draft_graph import build_draft_graph
 from app.graphs.triage_graph import build_triage_graph
 from app.retrieval.kb_index import KBIndex
@@ -64,7 +64,9 @@ def run_eval(
 
     model_adapter = model_adapter or get_model_adapter()
     if kb_index_instance is None:
-        kb_index_instance = KBIndex()
+        kb_index_instance = KBIndex(
+            get_embedding_adapter(), similarity_threshold=settings.embedding_similarity_threshold,
+        )
         kb_index_instance.load_directory(f"{settings.data_dir}/knowledge_base")
     fetch_ticket = fetch_ticket or _default_fetch_ticket_factory()
 

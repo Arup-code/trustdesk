@@ -1,10 +1,11 @@
 from app.adapters.mock_adapter import MockModelAdapter
+from app.adapters.mock_embedding_adapter import MockEmbeddingAdapter
 from app.graphs.draft_graph import build_draft_graph
 from app.retrieval.kb_index import KBIndex
 
 
 def _real_kb_index() -> KBIndex:
-    index = KBIndex()
+    index = KBIndex(MockEmbeddingAdapter())
     index.load_directory("../data/knowledge_base")
     return index
 
