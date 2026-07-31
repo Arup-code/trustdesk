@@ -22,7 +22,7 @@ planned.
       |   ^                                tool_actions, approvals, traces, eval_runs]
       |   | X-Internal-Key + internal network only
       v   |
-[Python FastAPI ai-service] --keyword search--> [Knowledge base (BM25 over data/knowledge_base/*.md)]
+[Python FastAPI ai-service] --hybrid search (BM25 + embeddings, RRF-fused)--> [Knowledge base (data/knowledge_base/*.md)]
       |
       v
 [ModelAdapter] --> [MockModelAdapter (default) | OpenRouterAdapter (available, untested live)]
@@ -88,6 +88,18 @@ Once all four containers are up, open `http://localhost:3000` and log in with a 
 | `AI_MODEL_MODE` | `mock` | `mock` (deterministic, no external calls) or `openrouter` (live LLM calls) |
 | `OPENROUTER_API_KEY` | *(empty)* | only needed if `AI_MODEL_MODE=openrouter` |
 | `OPENROUTER_MODEL` | `openrouter/auto` | model routed through OpenRouter |
+| `AI_EMBEDDING_MODE` | `mock` | `mock` (deterministic, offline) or `openai` (live OpenAI embeddings API — note: OpenRouter does not proxy embeddings, this calls OpenAI directly) |
+| `OPENAI_API_KEY` | *(empty)* | only needed if `AI_EMBEDDING_MODE=openai` |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | embedding model used when `AI_EMBEDDING_MODE=openai` |
+| `EMBEDDING_SIMILARITY_THRESHOLD` | `0.35` | minimum cosine similarity for the embedding branch of hybrid KB search to consider a document relevant |
+
+> **Note:** `AI_EMBEDDING_MODE=openai` is implemented but not yet production-hardened: the 0.35
+> similarity threshold has only been validated against synthetic test vectors, not a real
+> embedding model, and `ai-service` currently loads the knowledge base (including any live
+> embedding calls) at process import time, so a bad key or an OpenAI outage would currently fail
+> the whole service's startup rather than degrading gracefully. Treat this mode as experimental
+> until it's been calibrated with `run_eval` against real embeddings and the startup path has
+> been hardened.
 
 ### Demo login
 
@@ -101,8 +113,10 @@ Two demo users are seeded in `backend/src/main/java/app/dexcode/trustdesk/securi
 ### Local development without Docker (alternative)
 
 Prerequisites confirmed working in earlier phases: Java 21, Node 20, Python 3.12 (the `ai-service`
-Dockerfile pins `python:3.12-slim`; local dev has also been run against newer Python 3.x without
-issue since nothing in `requirements.txt` needs 3.13+ syntax).
+Dockerfile pins `python:3.12-slim`). **Local (non-Docker) `ai-service` development requires Python
+3.12** — `requirements.txt` pins `chromadb<1.0`, which depends on the `chroma-hnswlib` C extension,
+and that extension has no prebuilt wheels for Python 3.13+ (installing it there requires a working
+C/C++ toolchain). Docker-based development (the primary path in this README) is unaffected.
 
 ```bash
 # Backend (needs a reachable MySQL, or point SPRING_DATASOURCE_URL at H2 for a quick local run)

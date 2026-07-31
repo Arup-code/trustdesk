@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from app.adapters.mock_embedding_adapter import MockEmbeddingAdapter
@@ -189,17 +191,18 @@ def test_ingest_twice_does_not_leak_chroma_collections():
     assert len(matches) == 1
 
 
+class _FixedVectorEmbeddingAdapter:
+    def __init__(self, vectors: dict[str, list[float]]):
+        self._vectors = vectors
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._vectors[text] for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._vectors[text]
+
+
 def test_embedding_branch_surfaces_a_match_bm25_misses():
-    class _FixedVectorEmbeddingAdapter:
-        def __init__(self, vectors: dict[str, list[float]]):
-            self._vectors = vectors
-
-        def embed_documents(self, texts: list[str]) -> list[list[float]]:
-            return [self._vectors[text] for text in texts]
-
-        def embed_query(self, text: str) -> list[float]:
-            return self._vectors[text]
-
     doc_a_content = "Large mammals graze together across savanna landscapes."
     doc_b_content = "Quarterly financial reporting procedures for vendors."
     query = "striped equine herd behavior"
@@ -220,3 +223,48 @@ def test_embedding_branch_surfaces_a_match_bm25_misses():
 
     assert [r.doc_id for r in results] == ["KB-A-001"]
     assert results[0].score > 0
+
+
+def test_embedding_branch_excludes_result_just_below_similarity_threshold():
+    # Pins the default 0.35 similarity_threshold and the >= (inclusive)
+    # comparison in KBIndex._embedding_ranked_ids: without this test, someone
+    # could change the default threshold or flip >= to > and the full suite
+    # would still pass, since the only other embedding-threshold test
+    # (test_embedding_branch_surfaces_a_match_bm25_misses) uses orthogonal
+    # vectors (similarity 0.0 vs 1.0) -- an infinitely wide margin.
+    doc_content = "Large mammals graze together across savanna landscapes."
+    query = "striped equine herd behavior"
+
+    doc_vector = [1.0, 0.0]
+    similarity = 0.34  # just below the 0.35 default threshold
+    theta = math.acos(similarity)
+    query_vector = [math.cos(theta), math.sin(theta)]
+    assert math.isclose(doc_vector[0] * query_vector[0] + doc_vector[1] * query_vector[1], similarity)
+
+    adapter = _FixedVectorEmbeddingAdapter({doc_content: doc_vector, query: query_vector})
+    index = KBIndex(adapter)
+    index.ingest([
+        DocumentIn(doc_id="KB-THRESH-001", title="Doc", content=doc_content, source_path="thresh.md"),
+    ])
+
+    assert index.search(query) == []
+
+
+def test_embedding_branch_includes_result_just_above_similarity_threshold():
+    doc_content = "Large mammals graze together across savanna landscapes."
+    query = "striped equine herd behavior"
+
+    doc_vector = [1.0, 0.0]
+    similarity = 0.36  # just above the 0.35 default threshold
+    theta = math.acos(similarity)
+    query_vector = [math.cos(theta), math.sin(theta)]
+    assert math.isclose(doc_vector[0] * query_vector[0] + doc_vector[1] * query_vector[1], similarity)
+
+    adapter = _FixedVectorEmbeddingAdapter({doc_content: doc_vector, query: query_vector})
+    index = KBIndex(adapter, similarity_threshold=0.35)
+    index.ingest([
+        DocumentIn(doc_id="KB-THRESH-001", title="Doc", content=doc_content, source_path="thresh.md"),
+    ])
+
+    results = index.search(query)
+    assert [r.doc_id for r in results] == ["KB-THRESH-001"]
