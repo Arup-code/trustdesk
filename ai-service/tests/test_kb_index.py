@@ -146,6 +146,49 @@ def test_rrf_fuse_combines_ranks_from_both_lists():
     assert scores["KB-X-001"] == pytest.approx(scores["KB-Y-001"])
 
 
+def test_ingest_twice_does_not_leak_chroma_collections():
+    # Regression test for a leak where _rebuild_index() minted a brand-new,
+    # never-deleted chromadb collection (name f"kb_docs_{uuid4().hex}") on
+    # *every* rebuild instead of reusing one collection per KBIndex instance.
+    # A long-lived KBIndex (e.g. the router's module-level singleton, rebuilt
+    # on every POST /documents/ingest) would otherwise accumulate one full
+    # copy of the corpus's embeddings per ingest call, forever, for the life
+    # of the process -- an unbounded, remotely-triggerable memory leak.
+    index = KBIndex(MockEmbeddingAdapter())
+
+    index.ingest([
+        DocumentIn(
+            doc_id="KB-LEAK-001",
+            title="First Doc",
+            content="This document is about a cracked earbud replacement request.",
+            source_path="first.md",
+        ),
+    ])
+    index.ingest([
+        DocumentIn(
+            doc_id="KB-LEAK-002",
+            title="Second Doc",
+            content="This document discusses quarterly financial reporting procedures.",
+            source_path="second.md",
+        ),
+    ])
+
+    # chromadb.EphemeralClient() shares one process-wide system across every
+    # instance created in this process, so other tests' KBIndex instances
+    # legitimately have their own single live collection too -- counting all
+    # "kb_docs_*" collections process-wide would conflate that with a leak.
+    # What the fix actually guarantees is that *this* index's own
+    # never-changing collection name resolves to exactly one live collection
+    # after multiple rebuilds, not that it accumulates one per ingest() call.
+    # (Also: chromadb 0.6+'s list_collections() returns collection names as
+    # strings, not Collection objects -- accessing `.name` on an entry raises
+    # NotImplementedError pointing at the v0.6 migration guide.)
+    matches = [
+        name for name in index._chroma_client.list_collections() if str(name) == index._collection_name
+    ]
+    assert len(matches) == 1
+
+
 def test_embedding_branch_surfaces_a_match_bm25_misses():
     class _FixedVectorEmbeddingAdapter:
         def __init__(self, vectors: dict[str, list[float]]):

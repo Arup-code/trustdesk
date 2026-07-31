@@ -73,6 +73,23 @@ class KBIndex:
         self._bm25: BM25Okapi | None = None
         self._doc_order: list[str] = []
         self._chroma_collection: Any = None
+        # chromadb.EphemeralClient() shares one process-wide in-memory system
+        # across every instance it creates -- its "system identifier" is
+        # hardcoded to the literal string "ephemeral" regardless of how many
+        # separate EphemeralClient() calls are made (see chromadb's
+        # SharedSystemClient._get_identifier_from_settings). A fixed
+        # collection name like "kb_docs" would therefore resolve to the same
+        # underlying collection across *every* KBIndex instance in one
+        # process, causing dimension mismatches and stale documents leaking
+        # between unrelated indexes (e.g. between two different tests, or
+        # between a router's long-lived singleton and a test's throwaway
+        # index). Minting this name once per instance (not once per rebuild)
+        # keeps every KBIndex's embedding data isolated from every other
+        # instance while still letting _rebuild_index() delete-then-recreate
+        # its own single collection on each rebuild, instead of leaking a
+        # fresh never-deleted collection on every ingest() call.
+        self._collection_name = f"kb_docs_{uuid.uuid4().hex}"
+        self._chroma_client = chromadb.EphemeralClient()
 
     def load_directory(self, directory: str) -> int:
         path = Path(directory)
@@ -113,24 +130,20 @@ class KBIndex:
 
         contents = [self._documents[doc_id].content for doc_id in self._doc_order]
         embeddings = self._embedding_adapter.embed_documents(contents)
-        client = chromadb.EphemeralClient()
-        # chromadb.EphemeralClient() shares one process-wide in-memory system
-        # across every instance it creates -- its "system identifier" is
-        # hardcoded to the literal string "ephemeral" regardless of how many
-        # separate EphemeralClient() calls are made (see chromadb's
-        # SharedSystemClient._get_identifier_from_settings). A fixed
-        # collection name like "kb_docs" would therefore resolve to the same
-        # underlying collection across *every* KBIndex instance -- and every
-        # rebuild of the same instance -- in one process, causing dimension
-        # mismatches and stale documents leaking between unrelated indexes
-        # (e.g. between two different tests, or between a router's
-        # long-lived singleton and a test's throwaway index). Giving each
-        # rebuild its own uniquely named collection keeps every KBIndex's
-        # embedding data fully isolated.
-        collection = client.create_collection(
-            name=f"kb_docs_{uuid.uuid4().hex}", metadata={"hnsw:space": "cosine"},
+        # Delete this instance's previous collection (if any) before
+        # recreating it, so a long-lived KBIndex (e.g. the router's
+        # module-level singleton, rebuilt on every ingest() call) holds at
+        # most one live chromadb collection at a time instead of minting a
+        # brand-new, never-deleted one -- and its full embedded corpus --
+        # on every rebuild.
+        try:
+            self._chroma_client.delete_collection(self._collection_name)
+        except Exception:
+            pass  # no collection yet on the first rebuild
+        collection = self._chroma_client.create_collection(
+            name=self._collection_name, metadata={"hnsw:space": "cosine"},
         )
-        collection.add(ids=self._doc_order, embeddings=embeddings, documents=contents)
+        collection.add(ids=self._doc_order, embeddings=embeddings)
         self._chroma_collection = collection
 
     def _bm25_ranked_ids(self, query: str, k: int) -> list[str]:
