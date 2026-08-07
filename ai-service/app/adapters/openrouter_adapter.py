@@ -21,7 +21,8 @@ class OpenRouterAdapter:
         prompt = (
             "Classify this support ticket. Respond with ONLY a JSON object with keys "
             "category (one of: shipping, refund, warranty, billing, account_security, general), "
-            "priority (one of: low, medium, high, urgent), sentiment (one word), "
+            "priority (one of: low, medium, high, urgent), "
+            "sentiment (one of: neutral, frustrated, angry, negative, positive, confused, concerned, satisfied), "
             "reason_summary (one short sentence).\n\n"
             f"Ticket: {ticket_text}\nContext: {context}"
         )
