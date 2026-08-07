@@ -1,3 +1,4 @@
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from rank_bm25 import BM25Okapi
 from app.adapters.embedding_adapter import EmbeddingAdapter
 from app.retrieval.lexical import raw_idf, tokenize
 from app.schemas.documents import DocumentIn, SearchResult
+
+logger = logging.getLogger(__name__)
 
 _DOC_ID_PATTERN = re.compile(r"^Doc ID:\s*(\S+)", re.MULTILINE)
 _TITLE_PATTERN = re.compile(r"^#\s+(.+)$", re.MULTILINE)
@@ -129,7 +132,26 @@ class KBIndex:
         self._bm25 = bm25
 
         contents = [self._documents[doc_id].content for doc_id in self._doc_order]
-        embeddings = self._embedding_adapter.embed_documents(contents)
+        try:
+            embeddings = self._embedding_adapter.embed_documents(contents)
+        except Exception:
+            # The embedding provider is an external network call (OpenAI/
+            # OpenRouter) that can fail independently of everything else
+            # this service does -- an invalid/expired API key, a rate limit,
+            # or a transient outage. documents.py builds this index's
+            # module-level singleton at *import* time, so letting this
+            # propagate used to crash the entire ai-service process before
+            # it could even start, taking down completely unrelated routes
+            # (e.g. /internal/triage, which never touches embeddings) along
+            # with it. Degrade to BM25-only search for this rebuild instead:
+            # _embedding_ranked_ids() already treats a None collection as
+            # "no embedding results" and search() still works via BM25.
+            logger.exception(
+                "Embedding provider failed while rebuilding KB index; "
+                "degrading to BM25-only search until the next successful rebuild."
+            )
+            self._chroma_collection = None
+            return
         # Delete this instance's previous collection (if any) before
         # recreating it, so a long-lived KBIndex (e.g. the router's
         # module-level singleton, rebuilt on every ingest() call) holds at

@@ -250,6 +250,56 @@ def test_embedding_branch_excludes_result_just_below_similarity_threshold():
     assert index.search(query) == []
 
 
+class _FailingEmbeddingAdapter:
+    """Simulates an embedding provider that is unreachable or misconfigured
+    (network outage, invalid/expired API key, rate limit, ...)."""
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("embedding provider unavailable")
+
+    def embed_query(self, text: str) -> list[float]:
+        raise RuntimeError("embedding provider unavailable")
+
+
+def test_load_directory_degrades_to_bm25_only_when_embedding_provider_fails(tmp_path):
+    # Regression test: documents.py builds a module-level KBIndex and calls
+    # load_directory() at *import* time. If the embedding provider raises
+    # (as it does here), that used to propagate all the way out of the
+    # module import, crashing the whole ai-service process before it could
+    # even start -- taking down completely unrelated routes like
+    # /internal/triage (which never touches embeddings) along with it.
+    # load_directory() must swallow an embedding-provider failure and
+    # degrade to BM25-only search instead of raising.
+    # Three documents, not one: with too few documents sharing no query
+    # terms, BM25's IDF degenerates to 0 for every term (see the identical
+    # note on test_search_ranks_relevant_doc_first above), which would hide
+    # a real bug in the degraded-search path behind a BM25 corpus-size
+    # artifact instead.
+    (tmp_path / "refund.md").write_text(
+        "# Refund and Return Policy\n\nDoc ID: KB-REFUND-001\n\n"
+        "For damaged or defective items reported within the return window, "
+        "support may offer either a replacement or a refund review.",
+        encoding="utf-8",
+    )
+    (tmp_path / "shipping.md").write_text(
+        "# Shipping and Delivery Policy\n\nDoc ID: KB-SHIPPING-001\n\n"
+        "Most orders ship within 1 business day.",
+        encoding="utf-8",
+    )
+    (tmp_path / "warranty.md").write_text(
+        "# Warranty Policy\n\nDoc ID: KB-WARRANTY-001\n\n"
+        "Electronics have a 12-month limited warranty from delivery date.",
+        encoding="utf-8",
+    )
+
+    index = KBIndex(_FailingEmbeddingAdapter())
+    loaded = index.load_directory(str(tmp_path))  # must not raise
+
+    assert loaded == 3
+    results = index.search("damaged replacement")
+    assert results[0].doc_id == "KB-REFUND-001"
+
+
 def test_embedding_branch_includes_result_just_above_similarity_threshold():
     doc_content = "Large mammals graze together across savanna landscapes."
     query = "striped equine herd behavior"
