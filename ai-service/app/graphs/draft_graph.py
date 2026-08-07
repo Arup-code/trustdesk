@@ -7,6 +7,7 @@ from app.graphs.draft_state import DraftState
 from app.graphs.tool_recommendation import recommend_tool
 from app.guardrails.postcheck import postcheck
 from app.guardrails.precheck import precheck
+from app.guardrails.response_policy import guardrail_response_policy
 from app.retrieval.kb_index import KBIndex
 
 _CITATION_MARKER = re.compile(r"\[(KB-[A-Z0-9-]+)\]")
@@ -83,6 +84,21 @@ def build_draft_graph(model_adapter: ModelAdapter, kb_index: KBIndex):
         return {"status": "generated"}
 
     def refuse_node(state: DraftState) -> dict:
+        if state.get("guardrail_flagged"):
+            # Still never runs the (potentially adversarial) ticket text through
+            # generate() -- the doc_id and body text are a fixed lookup from the
+            # guardrail category label alone, so the refusal can cite the specific
+            # policy that justifies it without ever letting injected instructions
+            # reach the model.
+            policy = guardrail_response_policy(state.get("guardrail_category"))
+            return {
+                "body": "I can't act on that request because it conflicts with our support "
+                        f"security policy [{policy.doc_id}]. This ticket has been escalated to "
+                        "a human specialist.",
+                "citations": [policy.doc_id],
+                "recommended_actions": [],
+                "status": "escalated",
+            }
         return {
             "body": "I'm unable to confidently answer this request based on our policies and have "
                     "escalated it to a human specialist.",

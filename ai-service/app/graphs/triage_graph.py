@@ -3,6 +3,7 @@ from langgraph.graph import END, StateGraph
 from app.adapters.model_adapter import ModelAdapter
 from app.graphs.state import TriageState
 from app.guardrails.precheck import precheck
+from app.guardrails.response_policy import guardrail_response_policy
 
 
 def build_triage_graph(model_adapter: ModelAdapter):
@@ -16,19 +17,21 @@ def build_triage_graph(model_adapter: ModelAdapter):
             "category": classification["category"],
             "priority": classification["priority"],
             "sentiment": classification["sentiment"],
+            "should_escalate": classification.get("should_escalate", False),
             "reason_summary": classification["reason_summary"],
         }
 
     def finalize_node(state: TriageState) -> dict:
         if state.get("guardrail_flagged"):
+            policy = guardrail_response_policy(state.get("guardrail_category"))
             return {
-                "category": state.get("category", "account_security"),
-                "priority": state.get("priority", "high"),
+                "category": policy.category,
+                "priority": policy.priority,
                 "sentiment": state.get("sentiment", "neutral"),
                 "should_escalate": True,
                 "reason_summary": f"Guardrail flagged: {state.get('guardrail_category')} pattern detected.",
             }
-        return {"should_escalate": False}
+        return {"should_escalate": state.get("should_escalate", False)}
 
     def route_after_guardrail(state: TriageState) -> str:
         return "finalize" if state.get("guardrail_flagged") else "classify"

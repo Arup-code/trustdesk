@@ -32,11 +32,13 @@ class MockModelAdapter:
             priority = "medium"
 
         sentiment = "frustrated" if any(kw in text_lower for kw in _FRUSTRATED_KEYWORDS) else "neutral"
+        should_escalate = any(kw in text_lower for kw in _URGENT_KEYWORDS)
 
         return {
             "category": category,
             "priority": priority,
             "sentiment": sentiment,
+            "should_escalate": should_escalate,
             "reason_summary": f"Classified as {category} based on keyword match (mock adapter).",
         }
 
