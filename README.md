@@ -134,6 +134,24 @@ npm install
 npm run dev   # serves on http://localhost:5173, reads VITE_API_BASE_URL from frontend/.env
 ```
 
+## Hosting
+
+**The final hosted version will be available at
+[trustdesk.dexcode.app](https://trustdesk.dexcode.app) — deployment is currently in progress.**
+Local Docker Compose (above) remains the primary, fully-working way to run this project right now;
+nothing about the hosting prep below changes that.
+
+The codebase is prepped for a single-origin, path-prefix deployment: the frontend's nginx serves
+the SPA at `/` and proxies `/api/*` to the backend container (`frontend/nginx.conf`), so the
+browser only ever talks to `trustdesk.dexcode.app` — no CORS round-trip, and the backend/MySQL
+ports are never published to the host, only reachable over the Docker-internal network.
+`docker-compose.prod.yml` (a standalone file, not a `-f`-chained overlay — Compose merges list
+fields like `ports` across files rather than letting an override clear them) captures this
+topology; a TLS-terminating reverse proxy or load balancer routing `443` → the frontend container's
+port `80` is assumed to already exist in front of it, which this repo doesn't set up. The backend's
+CORS allowlist (`SecurityConfig.java`) also includes `https://trustdesk.dexcode.app` as
+defense-in-depth, even though same-origin path-prefix routing shouldn't need it.
+
 ## API overview
 
 The backend is the only service the frontend (or a human tester) should call directly.
