@@ -5,6 +5,9 @@ import app.dexcode.trustdesk.entities.AgentRunTrace;
 import app.dexcode.trustdesk.entities.Approval;
 import app.dexcode.trustdesk.entities.Ticket;
 import app.dexcode.trustdesk.entities.ToolActionRequest;
+import app.dexcode.trustdesk.exception.InvalidToolActionStateException;
+import app.dexcode.trustdesk.exception.ToolActionDeniedException;
+import app.dexcode.trustdesk.exception.ToolActionValidationException;
 import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.ApprovalRepository;
 import app.dexcode.trustdesk.repositories.TicketRepository;
@@ -40,18 +43,6 @@ public class ToolActionService {
         this.ticketRepository = ticketRepository;
         this.approvalRepository = approvalRepository;
         this.agentRunTraceRepository = agentRunTraceRepository;
-    }
-
-    public static class ToolActionValidationException extends RuntimeException {
-        public ToolActionValidationException(String message) { super(message); }
-    }
-
-    public static class InvalidToolActionStateException extends RuntimeException {
-        public InvalidToolActionStateException(String message) { super(message); }
-    }
-
-    public static class ToolActionDeniedException extends RuntimeException {
-        public ToolActionDeniedException(String message) { super(message); }
     }
 
     public ToolActionRequest requestAction(String ticketId, String toolName, Map<String, Object> payload) {

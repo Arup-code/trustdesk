@@ -72,3 +72,16 @@ export async function login(username: string, password: string): Promise<{ token
     body: JSON.stringify({ username, password }),
   });
 }
+
+export interface AdminResetSummary {
+  ticketsReset: number;
+  toolActionsDeleted: number;
+  approvalsDeleted: number;
+  draftRepliesDeleted: number;
+  agentRunTracesDeleted: number;
+  evalRunsDeleted: number;
+}
+
+export async function resetDemoData(): Promise<AdminResetSummary> {
+  return apiFetch("/admin/reset-demo", { method: "POST" });
+}

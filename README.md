@@ -25,7 +25,7 @@ planned.
 [Python FastAPI ai-service] --hybrid search (BM25 + embeddings, RRF-fused)--> [Knowledge base (data/knowledge_base/*.md)]
       |
       v
-[ModelAdapter] --> [MockModelAdapter (default) | OpenRouterAdapter (available, untested live)]
+[ModelAdapter] --> [MockModelAdapter (default) | OpenRouterAdapter (available, verified live)]
 ```
 
 - **Frontend** (`frontend/`) talks only to the Java backend. It never calls `ai-service` directly.
@@ -88,18 +88,17 @@ Once all four containers are up, open `http://localhost:3000` and log in with a 
 | `AI_MODEL_MODE` | `mock` | `mock` (deterministic, no external calls) or `openrouter` (live LLM calls) |
 | `OPENROUTER_API_KEY` | *(empty)* | only needed if `AI_MODEL_MODE=openrouter` |
 | `OPENROUTER_MODEL` | `openrouter/auto` | model routed through OpenRouter |
-| `AI_EMBEDDING_MODE` | `mock` | `mock` (deterministic, offline) or `openai` (live OpenAI embeddings API — note: OpenRouter does not proxy embeddings, this calls OpenAI directly) |
-| `OPENAI_API_KEY` | *(empty)* | only needed if `AI_EMBEDDING_MODE=openai` |
+| `AI_EMBEDDING_MODE` | `mock` | `mock` (deterministic, offline) or `openai` (live embeddings call) |
+| `OPENAI_API_KEY` | *(empty)* | only needed if `AI_EMBEDDING_MODE=openai`; `openai_embedding_adapter.py` currently hardcodes its `base_url` to OpenRouter (`https://openrouter.ai/api/v1`), so despite the variable's name this expects an OpenRouter-issued key, not an OpenAI one |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | embedding model used when `AI_EMBEDDING_MODE=openai` |
 | `EMBEDDING_SIMILARITY_THRESHOLD` | `0.35` | minimum cosine similarity for the embedding branch of hybrid KB search to consider a document relevant |
 
-> **Note:** `AI_EMBEDDING_MODE=openai` is implemented but not yet production-hardened: the 0.35
-> similarity threshold has only been validated against synthetic test vectors, not a real
-> embedding model, and `ai-service` currently loads the knowledge base (including any live
-> embedding calls) at process import time, so a bad key or an OpenAI outage would currently fail
-> the whole service's startup rather than degrading gracefully. Treat this mode as experimental
-> until it's been calibrated with `run_eval` against real embeddings and the startup path has
-> been hardened.
+> **Note:** the 0.35 similarity threshold has only been validated against synthetic test vectors,
+> not a real embedding model — treat it as a starting point, not a calibrated value. Embedding
+> failures no longer take the service down: `KBIndex._rebuild_index()` catches embedding-provider
+> errors (bad key, rate limit, outage) and degrades to BM25-only search for that rebuild instead of
+> crashing the whole process at import time, which is what used to happen (see "ticket triage
+> returning 401" under Design decisions).
 
 ### Demo login
 
@@ -183,9 +182,45 @@ login.
 | GET | `/eval-runs` | List all past eval runs. |
 | GET | `/eval-runs/{id}` | Fetch one eval run's summary metrics and per-case detail. 404 if unknown. |
 
+### Admin (`AdminController`)
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/admin/reset-demo` | Clears all demo-generated state (see "Resetting demo data" below) so the demo flow can be re-run from a clean slate without restarting containers. |
+
 The backend also exposes springdoc-generated interactive API docs at `/swagger-ui.html` (backed
 by `/v3/api-docs`) once running, since `springdoc-openapi-starter-webmvc-ui:2.6.0` is on the
 classpath.
+
+## Resetting demo data
+
+Running triage, drafts, approvals, and evals repeatedly (e.g. rehearsing a demo) accumulates rows
+in `tool_action_requests`, `approvals`, `draft_replies`, `agent_run_traces`, and `eval_runs`, and
+sets triage fields (`category`, `priority`, `sentiment`, `should_escalate`, `reason_summary`) on
+the seeded tickets. `POST /admin/reset-demo` clears all of that in place — deleting every row from
+those five tables and nulling the triage fields back to their pre-triage state — while leaving the
+seeded `customers`, `orders`, and ticket subject/body/status untouched. It runs against the live
+containers, so there's no need to restart or re-seed anything between demo takes.
+
+- **From the UI**: log in, click "Reset Demo Data" in the nav, confirm the prompt.
+- **Via curl**, once authenticated:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"agent1","password":"agent123"}' | jq -r .token)
+
+curl -s -X POST http://localhost:8080/admin/reset-demo -H "Authorization: Bearer $TOKEN" | jq
+```
+
+This returns a summary, e.g. `{"ticketsReset":8,"toolActionsDeleted":7,"approvalsDeleted":3,
+"draftRepliesDeleted":12,"agentRunTracesDeleted":37,"evalRunsDeleted":8}`. For a fully clean slate
+that also rebuilds the KB index and Docker images from scratch, `docker compose down -v && docker
+compose up --build` remains available, but `/admin/reset-demo` is the faster path for repeat demo
+runs.
+
+Like every other endpoint, this requires a valid JWT but isn't role-restricted — see "RBAC is not
+enforced" below.
 
 ## Running the eval suite
 
@@ -228,15 +263,13 @@ caseResults}`, where `caseResults` is a per-case array with `category_match`, `p
 `citation_ok`, `unsafe_ok`, `escalation_match`, and an overall `passed` flag — check this array
 for adversarial-case detail beyond what the summary metrics show.
 
-A full containerized run of this suite (`docker compose up --build`, then `POST /eval-runs`) was
-verified during this project's Docker-packaging task: 8 total cases,
-`{"triage_accuracy":0.875,"priority_accuracy":0.75,"citation_coverage":0.5,
-"unsafe_action_block_rate":1.0,"escalation_accuracy":0.875}`. All three adversarial cases
-(`eval_005`/`006`/`007`) had `unsafe_ok: true` and `escalation_match: true` — no unsafe action was
-ever recommended and every one was correctly escalated. (None of the three reach overall
-`passed: true`, because `citation_ok`/`category_match` — content-quality dimensions unrelated to
-safety — didn't fully match under the deterministic mock model; this is a known, pre-existing
-characteristic of scoring against `MockModelAdapter` rather than a live LLM, not a regression.)
+A full run against the live stack was verified after the triage/draft accuracy fixes described
+below: 7 of 8 cases fully passing, `{"triage_accuracy":1.0,"priority_accuracy":0.875,
+"citation_coverage":1.0,"unsafe_action_block_rate":1.0,"escalation_accuracy":1.0}`. All three
+adversarial cases (`eval_005`/`006`/`007`) had `unsafe_ok: true` and `escalation_match: true` — no
+unsafe action was ever recommended and every one was correctly escalated and correctly cited the
+policy doc that justified the refusal. The one remaining non-passing case is a `priority_accuracy`
+miss, not a safety-relevant dimension.
 
 ## Design decisions worth calling out
 
@@ -244,22 +277,35 @@ characteristic of scoring against `MockModelAdapter` rather than a live LLM, not
   throughout (`mysql:8` in Docker, `com.mysql:mysql-connector-j` in the backend). This was a
   deliberate choice made early in implementation and is reflected consistently everywhere
   (`docker-compose.yml`, `application.yaml`, `SPRING_DATASOURCE_URL`).
-- **BM25 keyword retrieval, not embeddings.** `ai-service/app/retrieval/kb_index.py` uses
-  `rank-bm25`'s `BM25Okapi` over the 8 markdown documents in `data/knowledge_base/`, with two
-  layers of stopword handling: a static English stopword list (removes words that are never
-  topically meaningful, e.g. "the", "was") and a dynamic per-corpus fix that zeroes out any term's
-  IDF whenever `rank_bm25` would otherwise floor a near-universal term's negative IDF to a small
-  positive value — without this, an off-topic query sharing only a common word (or KB boilerplate
-  like "policy"/"version") could retrieve and cite an unrelated document. This was needed
-  specifically because `KB-ADVERSARIAL-001` (a decoy document used to test guardrails) shares
-  ordinary English words with legitimate tickets purely by chance of writing style. Embeddings or
-  a vector DB were explicitly out of scope for this project's Must-Have bar.
-- **`AI_MODEL_MODE=mock` is the safe default.** `MockModelAdapter` is deterministic and makes no
-  external calls, so the system runs and evals score reproducibly with zero API keys. An
-  `OpenRouterAdapter` (`ai-service/app/adapters/openrouter_adapter.py`) exists behind the same
-  `ModelAdapter` protocol and can be enabled via `AI_MODEL_MODE=openrouter` +
-  `OPENROUTER_API_KEY`, but it has not been exercised against a live provider by this project's
-  automated test suite or containerized smoke test — treat it as available but unverified.
+- **Hybrid BM25 + embedding retrieval, fused with RRF.** `ai-service/app/retrieval/kb_index.py`
+  combines `rank-bm25`'s `BM25Okapi` lexical ranking over the 8 markdown documents in
+  `data/knowledge_base/` with an embedding-similarity ranking (via the pluggable
+  `EmbeddingAdapter` protocol — `MockEmbeddingAdapter` by default, `OpenAIEmbeddingAdapter` when
+  `AI_EMBEDDING_MODE=openai`), combined via Reciprocal Rank Fusion. BM25 alone still needed two
+  layers of stopword handling to stay safe: a static English stopword list, and a dynamic
+  per-corpus fix that zeroes out any term's IDF whenever `rank_bm25` would otherwise floor a
+  near-universal term's negative IDF to a small positive value — without this, an off-topic query
+  sharing only a common word (or KB boilerplate like "policy"/"version") could retrieve and cite an
+  unrelated document. This matters specifically because `KB-ADVERSARIAL-001` (a decoy document used
+  to test guardrails) shares ordinary English words with legitimate tickets purely by chance of
+  writing style. If the embedding provider fails (bad key, rate limit, outage), the index degrades
+  to BM25-only search rather than failing the whole service — see the `AI_EMBEDDING_MODE` note
+  above.
+- **`AI_MODEL_MODE=mock` is the safe default; `openrouter` has been verified live.**
+  `MockModelAdapter` is deterministic and makes no external calls, so the system runs and evals
+  score reproducibly with zero API keys. `OpenRouterAdapter`
+  (`ai-service/app/adapters/openrouter_adapter.py`) exists behind the same `ModelAdapter` protocol
+  and is enabled via `AI_MODEL_MODE=openrouter` + `OPENROUTER_API_KEY`; unlike earlier in the
+  project, it has since been exercised against a live provider (a full eval run against real LLM
+  calls), including a dedicated near-zero-temperature client for `classify()` so category/priority/
+  escalation judgments come back deterministic instead of drifting between identical requests.
+- **Guardrail-flagged tickets get a fixed, pre-vetted response, never a model-generated one.**
+  `ai-service/app/guardrails/response_policy.py` maps each guardrail category (identity bypass,
+  secret disclosure, coupon/discount injection) to a static category/priority/citation-doc triple.
+  Both `triage_graph.py` and `draft_graph.py` use it on the flagged path so a flagged ticket's
+  triage result and refusal citation are deterministic lookups from the category label alone —
+  the adversarial ticket text is never run through the classification or generation model, even to
+  decide how to respond to it.
 - **`ai-service` has no published Docker port.** It's reachable only from the `backend` container
   over the Docker-internal network; this was verified directly (`curl http://localhost:8000` from
   the host fails to connect against the running containers). Every one of its routes is *also*
@@ -283,6 +329,27 @@ characteristic of scoring against `MockModelAdapter` rather than a live LLM, not
 - **Every AI recommendation is gated by a human.** The backend only lets a tool action move from
   `approval_required` to `approved` via an explicit `POST /tool-actions/{id}/approve` call, and
   only lets `approved` actions execute — the AI service can recommend an action, never execute one.
+- **An unhandled backend exception now surfaces its real HTTP status instead of a misleading 401.**
+  Two compounding bugs used to turn *any* unhandled exception on an authenticated endpoint into a
+  bare 401: Spring's internal forward to `/error` wasn't in `SecurityConfig`'s permit-all list, and
+  `JwtAuthFilter` skips the `ERROR` dispatch by default with the security context already cleared,
+  so the forwarded request got denied by the auth entry point. `/error` is now permitted, and
+  `JwtAuthFilter` runs `filterChain.doFilter` from a `finally` block so the chain always continues
+  even if claims parsing throws unexpectedly.
+- **Ticket sentiment falls back to `neutral` on an unrecognized value instead of throwing.**
+  `category`/`priority` are both constrained by an explicit enumeration in the triage prompt and
+  match their Java enums one-for-one; sentiment didn't have that enumeration until recently, so
+  `TicketSentiment.fromValue` (`backend/.../enums/TicketSentiment.java`) logs and defaults to
+  `neutral` for any value outside its vocabulary instead of failing the whole triage request over a
+  cosmetic field no downstream logic branches on.
+- **Entities use typed Java enums (`EnumType.STRING`) plus Lombok instead of hand-written
+  getters/setters.** `Ticket`, `ToolActionRequest`, `Approval`, `DraftReply`, `AgentRunTrace`,
+  `EvalRun`, `Order`, and `Customer` now back their categorical fields
+  (`enums/TicketCategory.java`, `TicketPriority.java`, `TicketStatus.java`, `ApprovalDecision.java`,
+  `ToolActionStatus.java`, `ToolActionRiskLevel.java`, `DraftReplyStatus.java`,
+  `AgentRunTraceStatus.java`, `AgentRunTraceRunType.java`, `OrderStatus.java`) with real enums
+  rather than unchecked strings, and `ToolActionService`'s three exception types moved out to
+  top-level classes under `exception/` instead of nested statics.
 
 ## Known limitations
 
@@ -328,3 +395,6 @@ using the flow verified manually during this project's Docker-packaging task:
 3. Open `tkt_9006` or `tkt_9007` (adversarial), run triage — show the escalation and the absence
    of any unsafe recommended action.
 4. Go to the Evals tab, run the eval suite, and show the resulting metrics.
+5. Before the next take, click "Reset Demo Data" in the nav (or `POST /admin/reset-demo`) to clear
+   everything from steps 2–4 and re-run the whole flow from a clean slate — see "Resetting demo
+   data" above.

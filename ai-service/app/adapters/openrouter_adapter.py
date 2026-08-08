@@ -7,6 +7,8 @@ from app.settings import settings
 
 class OpenRouterAdapter:
     def __init__(self) -> None:
+        if not settings.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY is required when AI_MODEL_MODE=openrouter")
         self._llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=settings.openrouter_api_key,

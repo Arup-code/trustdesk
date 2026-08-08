@@ -2,6 +2,9 @@ package app.dexcode.trustdesk.controllers;
 
 import app.dexcode.trustdesk.entities.Approval;
 import app.dexcode.trustdesk.entities.ToolActionRequest;
+import app.dexcode.trustdesk.exception.InvalidToolActionStateException;
+import app.dexcode.trustdesk.exception.ToolActionDeniedException;
+import app.dexcode.trustdesk.exception.ToolActionValidationException;
 import app.dexcode.trustdesk.services.ToolActionService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.http.HttpStatus;
@@ -45,11 +48,11 @@ public class ToolActionController {
             ToolActionRequest action =
                 toolActionService.requestAction(body.ticketId(), body.toolName(), body.payload());
             return ResponseEntity.status(HttpStatus.CREATED).body(action);
-        } catch (ToolActionService.ToolActionValidationException e) {
+        } catch (ToolActionValidationException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
-        } catch (ToolActionService.ToolActionDeniedException e) {
+        } catch (ToolActionDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", e.getMessage()));
         }
     }
@@ -62,7 +65,7 @@ public class ToolActionController {
             return ResponseEntity.ok(approval);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
-        } catch (ToolActionService.InvalidToolActionStateException e) {
+        } catch (InvalidToolActionStateException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
         }
     }
@@ -74,7 +77,7 @@ public class ToolActionController {
             return ResponseEntity.ok(action);
         } catch (NoSuchElementException e) {
             return ResponseEntity.notFound().build();
-        } catch (ToolActionService.InvalidToolActionStateException e) {
+        } catch (InvalidToolActionStateException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
         }
     }

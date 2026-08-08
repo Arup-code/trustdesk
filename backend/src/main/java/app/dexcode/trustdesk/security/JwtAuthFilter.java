@@ -26,20 +26,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(
         HttpServletRequest request, HttpServletResponse response, FilterChain filterChain
     ) throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring("Bearer ".length());
-            try {
-                Claims claims = jwtService.parseClaims(token);
-                String role = claims.get("role", String.class);
-                var authToken = new UsernamePasswordAuthenticationToken(
-                    claims.getSubject(), null,
-                    List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())));
-                SecurityContextHolder.getContext().setAuthentication(authToken);
-            } catch (JwtException | IllegalArgumentException ignored) {
-                SecurityContextHolder.clearContext();
+        try {
+            String header = request.getHeader("Authorization");
+            if (header != null && header.startsWith("Bearer ")) {
+                String token = header.substring("Bearer ".length());
+                try {
+                    Claims claims = jwtService.parseClaims(token);
+                    String role = claims.get("role", String.class);
+                    var authToken = new UsernamePasswordAuthenticationToken(
+                        claims.getSubject(), null,
+                        List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase())));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                } catch (JwtException | IllegalArgumentException ignored) {
+                    SecurityContextHolder.clearContext();
+                }
             }
+        } finally {
+            filterChain.doFilter(request, response);
         }
-        filterChain.doFilter(request, response);
     }
 }

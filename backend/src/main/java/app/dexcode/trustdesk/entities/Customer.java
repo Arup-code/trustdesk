@@ -1,18 +1,33 @@
 package app.dexcode.trustdesk.entities;
 
 import app.dexcode.trustdesk.persistence.JsonConverters;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 import jakarta.persistence.*;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Objects;
 
 @Entity
 @Table(name = "customers")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@ToString(onlyExplicitlyIncluded = true)
 public class Customer {
 
     @Id
     @Column(name = "customer_id")
+    @EqualsAndHashCode.Include
+    @ToString.Include
     private String customerId;
 
     private String name;
@@ -28,168 +43,4 @@ public class Customer {
     @Convert(converter = JsonConverters.StringListConverter.class)
     @Column(columnDefinition = "TEXT")
     private List<String> tags;
-
-    public Customer() {}
-
-    public Customer(String customerId, String name, String email, String tier, String country,
-                    LocalDate createdAt, boolean verified, List<String> tags) {
-        this.customerId = customerId;
-        this.name = name;
-        this.email = email;
-        this.tier = tier;
-        this.country = country;
-        this.createdAt = createdAt;
-        this.verified = verified;
-        this.tags = tags;
-    }
-
-    public String getCustomerId() {
-        return customerId;
-    }
-
-    public void setCustomerId(String customerId) {
-        this.customerId = customerId;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getTier() {
-        return tier;
-    }
-
-    public void setTier(String tier) {
-        this.tier = tier;
-    }
-
-    public String getCountry() {
-        return country;
-    }
-
-    public void setCountry(String country) {
-        this.country = country;
-    }
-
-    public LocalDate getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDate createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public boolean isVerified() {
-        return verified;
-    }
-
-    public void setVerified(boolean verified) {
-        this.verified = verified;
-    }
-
-    public List<String> getTags() {
-        return tags;
-    }
-
-    public void setTags(List<String> tags) {
-        this.tags = tags;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Customer customer = (Customer) o;
-        return Objects.equals(customerId, customer.customerId);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(customerId);
-    }
-
-    @Override
-    public String toString() {
-        return "Customer{" +
-                "customerId='" + customerId + '\'' +
-                ", name='" + name + '\'' +
-                ", email='" + email + '\'' +
-                ", tier='" + tier + '\'' +
-                ", country='" + country + '\'' +
-                ", createdAt=" + createdAt +
-                ", verified=" + verified +
-                ", tags=" + tags +
-                '}';
-    }
-
-    public static CustomerBuilder builder() {
-        return new CustomerBuilder();
-    }
-
-    public static class CustomerBuilder {
-        private String customerId;
-        private String name;
-        private String email;
-        private String tier;
-        private String country;
-        private LocalDate createdAt;
-        private boolean verified;
-        private List<String> tags;
-
-        public CustomerBuilder customerId(String customerId) {
-            this.customerId = customerId;
-            return this;
-        }
-
-        public CustomerBuilder name(String name) {
-            this.name = name;
-            return this;
-        }
-
-        public CustomerBuilder email(String email) {
-            this.email = email;
-            return this;
-        }
-
-        public CustomerBuilder tier(String tier) {
-            this.tier = tier;
-            return this;
-        }
-
-        public CustomerBuilder country(String country) {
-            this.country = country;
-            return this;
-        }
-
-        public CustomerBuilder createdAt(LocalDate createdAt) {
-            this.createdAt = createdAt;
-            return this;
-        }
-
-        public CustomerBuilder verified(boolean verified) {
-            this.verified = verified;
-            return this;
-        }
-
-        public CustomerBuilder tags(List<String> tags) {
-            this.tags = tags;
-            return this;
-        }
-
-        public Customer build() {
-            return new Customer(customerId, name, email, tier, country, createdAt, verified, tags);
-        }
-    }
 }

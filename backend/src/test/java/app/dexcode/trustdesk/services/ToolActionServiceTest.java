@@ -3,6 +3,9 @@ package app.dexcode.trustdesk.services;
 import app.dexcode.trustdesk.entities.Approval;
 import app.dexcode.trustdesk.entities.Ticket;
 import app.dexcode.trustdesk.entities.ToolActionRequest;
+import app.dexcode.trustdesk.exception.InvalidToolActionStateException;
+import app.dexcode.trustdesk.exception.ToolActionDeniedException;
+import app.dexcode.trustdesk.exception.ToolActionValidationException;
 import app.dexcode.trustdesk.repositories.TicketRepository;
 import app.dexcode.trustdesk.repositories.ToolActionRequestRepository;
 import org.junit.jupiter.api.Test;
@@ -32,7 +35,7 @@ class ToolActionServiceTest {
     @Test
     void requestActionRejectsUnknownTool() {
         setTicketCategory("tkt_9001", "refund");
-        var ex = assertThrows(ToolActionService.ToolActionValidationException.class, () ->
+        var ex = assertThrows(ToolActionValidationException.class, () ->
             toolActionService.requestAction("tkt_9001", "not_a_real_tool", Map.of("idempotency_key", "k1")));
         assertTrue(ex.getMessage().contains("not_a_real_tool"));
     }
@@ -40,7 +43,7 @@ class ToolActionServiceTest {
     @Test
     void requestActionRejectsMissingRequiredField() {
         setTicketCategory("tkt_9001", "refund");
-        var ex = assertThrows(ToolActionService.ToolActionValidationException.class, () ->
+        var ex = assertThrows(ToolActionValidationException.class, () ->
             toolActionService.requestAction("tkt_9001", "create_replacement_order", Map.of(
                 "order_id", "ord_5001", "idempotency_key", "k2")));
         assertNotNull(ex.getMessage());
@@ -49,7 +52,7 @@ class ToolActionServiceTest {
     @Test
     void requestActionRejectsDisallowedCategory() {
         setTicketCategory("tkt_9002", "shipping");
-        var ex = assertThrows(ToolActionService.ToolActionValidationException.class, () ->
+        var ex = assertThrows(ToolActionValidationException.class, () ->
             toolActionService.requestAction("tkt_9002", "create_replacement_order", Map.of(
                 "order_id", "ord_5002", "sku", "BG-CASE-14", "reason", "damaged",
                 "idempotency_key", "k3")));
@@ -80,7 +83,7 @@ class ToolActionServiceTest {
             "order_id", "ord_5001", "sku", "BG-AIRPODS-01", "reason", "damaged",
             "idempotency_key", "tkt_9001-replacement-execute-before-approve"));
 
-        assertThrows(ToolActionService.InvalidToolActionStateException.class, () ->
+        assertThrows(InvalidToolActionStateException.class, () ->
             toolActionService.execute(action.getActionId()));
     }
 
@@ -121,7 +124,7 @@ class ToolActionServiceTest {
             .createdAt(java.time.Instant.now())
             .build());
 
-        var ex = assertThrows(ToolActionService.ToolActionDeniedException.class, () ->
+        var ex = assertThrows(ToolActionDeniedException.class, () ->
             toolActionService.requestAction("tkt_9006", "issue_coupon", Map.of(
                 "customer_id", "cus_1006", "amount", 500, "reason", "goodwill",
                 "idempotency_key", "tkt_9006-coupon-denied")));
@@ -150,7 +153,7 @@ class ToolActionServiceTest {
             .createdAt(java.time.Instant.now())
             .build());
 
-        var ex = assertThrows(ToolActionService.ToolActionDeniedException.class, () ->
+        var ex = assertThrows(ToolActionDeniedException.class, () ->
             toolActionService.requestAction("tkt_9008", "issue_coupon", Map.of(
                 "customer_id", "cus_1003", "amount", 500, "reason", "goodwill",
                 "idempotency_key", "tkt_9008-coupon-precedence-check")));
@@ -273,7 +276,7 @@ class ToolActionServiceTest {
             .createdAt(now)
             .build());
 
-        assertThrows(ToolActionService.ToolActionDeniedException.class, () ->
+        assertThrows(ToolActionDeniedException.class, () ->
             toolActionService.requestAction("tkt_9007", "issue_coupon", Map.of(
                 "customer_id", "cus_1006", "amount", 500, "reason", "goodwill",
                 "idempotency_key", "tkt_9007-coupon-newest-flag-wins")));

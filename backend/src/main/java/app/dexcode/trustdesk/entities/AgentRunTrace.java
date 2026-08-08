@@ -1,27 +1,48 @@
 package app.dexcode.trustdesk.entities;
 
+import app.dexcode.trustdesk.enums.AgentRunTraceRunType;
+import app.dexcode.trustdesk.enums.AgentRunTraceStatus;
 import app.dexcode.trustdesk.persistence.JsonConverters;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Entity
 @Table(name = "agent_run_traces")
+@Getter
+@Setter
+@NoArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@ToString(onlyExplicitlyIncluded = true)
 public class AgentRunTrace {
 
     @Id
     @Column(name = "run_id")
+    @EqualsAndHashCode.Include
+    @ToString.Include
     private String runId;
 
     @Column(name = "ticket_id")
     private String ticketId;
 
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
     @Column(name = "run_type")
-    private String runType;
+    @Enumerated(EnumType.STRING)
+    private AgentRunTraceRunType runType;
 
-    private String status;
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    @Enumerated(EnumType.STRING)
+    private AgentRunTraceStatus status;
 
     @Convert(converter = JsonConverters.StringListConverter.class)
     @Column(name = "retrieved_doc_ids", columnDefinition = "TEXT")
@@ -38,84 +59,24 @@ public class AgentRunTrace {
     @Column(name = "created_at")
     private Instant createdAt;
 
-    public AgentRunTrace() {}
+    public String getRunType() { return runType == null ? null : runType.name(); }
+    public void setRunType(String runType) { this.runType = AgentRunTraceRunType.fromValue(runType); }
+    public void setRunType(AgentRunTraceRunType runType) { this.runType = runType; }
 
-    public String getRunId() { return runId; }
-    public void setRunId(String runId) { this.runId = runId; }
+    public String getStatus() { return status == null ? null : status.name(); }
+    public void setStatus(String status) { this.status = AgentRunTraceStatus.fromValue(status); }
+    public void setStatus(AgentRunTraceStatus status) { this.status = status; }
 
-    public String getTicketId() { return ticketId; }
-    public void setTicketId(String ticketId) { this.ticketId = ticketId; }
-
-    public String getRunType() { return runType; }
-    public void setRunType(String runType) { this.runType = runType; }
-
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-
-    public List<String> getRetrievedDocIds() { return retrievedDocIds; }
-    public void setRetrievedDocIds(List<String> retrievedDocIds) { this.retrievedDocIds = retrievedDocIds; }
-
-    public List<Map<String, Object>> getToolCalls() { return toolCalls; }
-    public void setToolCalls(List<Map<String, Object>> toolCalls) { this.toolCalls = toolCalls; }
-
-    public Map<String, Object> getGuardrailResults() { return guardrailResults; }
-    public void setGuardrailResults(Map<String, Object> guardrailResults) { this.guardrailResults = guardrailResults; }
-
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        AgentRunTrace that = (AgentRunTrace) o;
-        return Objects.equals(runId, that.runId);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(runId);
-    }
-
-    @Override
-    public String toString() {
-        return "AgentRunTrace{runId='" + runId + "'}";
-    }
-
-    public static AgentRunTraceBuilder builder() {
-        return new AgentRunTraceBuilder();
-    }
-
-    public static class AgentRunTraceBuilder {
-        private String runId;
-        private String ticketId;
-        private String runType;
-        private String status;
-        private List<String> retrievedDocIds;
-        private List<Map<String, Object>> toolCalls;
-        private Map<String, Object> guardrailResults;
-        private Instant createdAt;
-
-        public AgentRunTraceBuilder runId(String runId) { this.runId = runId; return this; }
-        public AgentRunTraceBuilder ticketId(String ticketId) { this.ticketId = ticketId; return this; }
-        public AgentRunTraceBuilder runType(String runType) { this.runType = runType; return this; }
-        public AgentRunTraceBuilder status(String status) { this.status = status; return this; }
-        public AgentRunTraceBuilder retrievedDocIds(List<String> retrievedDocIds) { this.retrievedDocIds = retrievedDocIds; return this; }
-        public AgentRunTraceBuilder toolCalls(List<Map<String, Object>> toolCalls) { this.toolCalls = toolCalls; return this; }
-        public AgentRunTraceBuilder guardrailResults(Map<String, Object> guardrailResults) { this.guardrailResults = guardrailResults; return this; }
-        public AgentRunTraceBuilder createdAt(Instant createdAt) { this.createdAt = createdAt; return this; }
-
-        public AgentRunTrace build() {
-            AgentRunTrace a = new AgentRunTrace();
-            a.runId = runId;
-            a.ticketId = ticketId;
-            a.runType = runType;
-            a.status = status;
-            a.retrievedDocIds = retrievedDocIds;
-            a.toolCalls = toolCalls;
-            a.guardrailResults = guardrailResults;
-            a.createdAt = createdAt;
-            return a;
-        }
+    @Builder
+    public AgentRunTrace(String runId, String ticketId, String runType, String status, List<String> retrievedDocIds,
+                         List<Map<String, Object>> toolCalls, Map<String, Object> guardrailResults, Instant createdAt) {
+        this.runId = runId;
+        this.ticketId = ticketId;
+        this.runType = AgentRunTraceRunType.fromValue(runType);
+        this.status = AgentRunTraceStatus.fromValue(status);
+        this.retrievedDocIds = retrievedDocIds;
+        this.toolCalls = toolCalls;
+        this.guardrailResults = guardrailResults;
+        this.createdAt = createdAt;
     }
 }

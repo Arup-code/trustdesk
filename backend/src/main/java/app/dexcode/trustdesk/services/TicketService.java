@@ -11,6 +11,8 @@ import app.dexcode.trustdesk.entities.Customer;
 import app.dexcode.trustdesk.entities.DraftReply;
 import app.dexcode.trustdesk.entities.Order;
 import app.dexcode.trustdesk.entities.Ticket;
+import app.dexcode.trustdesk.exception.ToolActionDeniedException;
+import app.dexcode.trustdesk.exception.ToolActionValidationException;
 import app.dexcode.trustdesk.repositories.AgentRunTraceRepository;
 import app.dexcode.trustdesk.repositories.CustomerRepository;
 import app.dexcode.trustdesk.repositories.DraftReplyRepository;
@@ -188,7 +190,7 @@ public class TicketService {
                     // AI recommendation is exactly the "upstream" the guardrail-denial check
                     // (ToolActionService) exists to not have to trust blindly.
                     toolActionService.requestAction(ticketId, action.toolName(), payload);
-                } catch (ToolActionService.ToolActionValidationException | ToolActionService.ToolActionDeniedException e) {
+                } catch (ToolActionValidationException | ToolActionDeniedException e) {
                     // The draft itself is still valid even if the AI's recommended action doesn't
                     // validate against the real catalog/guardrails (e.g. missing order/item data,
                     // or a flagged ticket) -- log and skip creating a pending action for it rather

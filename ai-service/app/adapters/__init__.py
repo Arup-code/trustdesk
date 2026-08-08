@@ -8,12 +8,12 @@ from app.settings import settings
 
 
 def get_model_adapter() -> ModelAdapter:
-    if settings.ai_model_mode == "openrouter":
+    if settings.ai_model_mode.strip().lower() == "openrouter":
         return OpenRouterAdapter()
     return MockModelAdapter()
 
 
 def get_embedding_adapter() -> EmbeddingAdapter:
-    if settings.ai_embedding_mode == "openai":
+    if settings.ai_embedding_mode.strip().lower() == "openai":
         return OpenAIEmbeddingAdapter()
     return MockEmbeddingAdapter()
