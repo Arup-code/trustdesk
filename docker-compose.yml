@@ -6,7 +6,7 @@ services:
       MYSQL_USER: trustdesk
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-    ports: ["127.0.0.1:3306:3306"]
+    ports: ["127.0.0.1:3307:3306"]
     volumes: ["mysql-data:/var/lib/mysql"]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -46,15 +46,15 @@ services:
       APP_JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-please-override-in-prod}
       APP_SEED_DATA_DIR: /app/data
     volumes: ["./data:/app/data:ro"]
-    ports: ["8080:8080"]
+    ports: ["8081:8080"]
 
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: http://localhost:8080
+        VITE_API_BASE_URL: http://localhost:8081
     depends_on: [backend]
-    ports: ["3000:80"]
+    ports: ["3001:80"]
 
 volumes:
   mysql-data:

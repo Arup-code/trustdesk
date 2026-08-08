@@ -69,12 +69,12 @@ This starts four containers:
 
 | Service | Container port | Published on host | Notes |
 |---|---|---|---|
-| `mysql` | 3306 | `127.0.0.1:3306` (loopback only) | seeded automatically by the backend on startup |
-| `backend` | 8080 | `8080` | Java REST API |
+| `mysql` | 3306 | `127.0.0.1:3307` (loopback only) | seeded automatically by the backend on startup |
+| `backend` | 8080 | `8081` | Java REST API |
 | `ai-service` | 8000 | *none* | internal-network-only by design; also gated by `X-Internal-Key` |
-| `frontend` | 80 | `3000` | nginx serving the Vite production build |
+| `frontend` | 80 | `3001` | nginx serving the Vite production build |
 
-Once all four containers are up, open `http://localhost:3000` and log in with a demo account
+Once all four containers are up, open `http://localhost:3001` and log in with a demo account
 (see "Demo login" below).
 
 ### Environment variables (`.env`, from `.env.example`)
@@ -206,11 +206,11 @@ containers, so there's no need to restart or re-seed anything between demo takes
 - **Via curl**, once authenticated:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8081/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"agent1","password":"agent123"}' | jq -r .token)
 
-curl -s -X POST http://localhost:8080/admin/reset-demo -H "Authorization: Bearer $TOKEN" | jq
+curl -s -X POST http://localhost:8081/admin/reset-demo -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 This returns a summary, e.g. `{"ticketsReset":8,"toolActionsDeleted":7,"approvalsDeleted":3,
@@ -238,15 +238,15 @@ To run it, either:
 - **Via curl**, once authenticated:
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8081/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"agent1","password":"agent123"}' | jq -r .token)
 
-curl -s -X POST http://localhost:8080/eval-runs -H "Authorization: Bearer $TOKEN" | jq
+curl -s -X POST http://localhost:8081/eval-runs -H "Authorization: Bearer $TOKEN" | jq
 
-curl -s http://localhost:8080/eval-runs -H "Authorization: Bearer $TOKEN" | jq
+curl -s http://localhost:8081/eval-runs -H "Authorization: Bearer $TOKEN" | jq
 
-curl -s http://localhost:8080/eval-runs/{id} -H "Authorization: Bearer $TOKEN" | jq
+curl -s http://localhost:8081/eval-runs/{id} -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 The eval runner (`ai-service/app/eval/eval_runner.py`) reuses the real production `triage_graph`
@@ -389,7 +389,7 @@ The capstone deliverables call for a short explainer video walking through the f
 safely). **That recording has not been made** — it's on you (the developer) to record it, e.g.
 using the flow verified manually during this project's Docker-packaging task:
 
-1. `docker compose up --build`, open `http://localhost:3000`, log in as `agent1`/`agent123`.
+1. `docker compose up --build`, open `http://localhost:3001`, log in as `agent1`/`agent123`.
 2. Open `tkt_9001`, run triage, generate a draft, approve and execute the recommended
    `create_replacement_order` action.
 3. Open `tkt_9006` or `tkt_9007` (adversarial), run triage — show the escalation and the absence
