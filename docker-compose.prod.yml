@@ -26,8 +26,8 @@ services:
     environment:
       MYSQL_DATABASE: trustdesk
       MYSQL_USER: trustdesk
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env for production}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env for production}
     volumes: ["mysql-data:/var/lib/mysql"]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -45,7 +45,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_SIMILARITY_THRESHOLD: ${EMBEDDING_SIMILARITY_THRESHOLD:-0.35}
       DATA_DIR: /app/data
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY must be set in .env for production}
       JAVA_BASE_URL: http://backend:8080
       EVAL_JAVA_USERNAME: ${EVAL_JAVA_USERNAME:-agent1}
       EVAL_JAVA_PASSWORD: ${EVAL_JAVA_PASSWORD:-agent123}
@@ -61,10 +61,10 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/trustdesk
       SPRING_DATASOURCE_USERNAME: trustdesk
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env for production}
       APP_AI_SERVICE_BASE_URL: http://ai-service:8000
-      APP_AI_SERVICE_INTERNAL_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
-      APP_JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-please-override-in-prod}
+      APP_AI_SERVICE_INTERNAL_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY must be set in .env for production}
+      APP_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env for production}
       APP_SEED_DATA_DIR: /app/data
     volumes: ["./data:/app/data:ro"]
     # No ports mapping -- only reachable from the frontend container's nginx
