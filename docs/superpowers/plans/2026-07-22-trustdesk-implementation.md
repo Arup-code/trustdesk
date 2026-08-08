@@ -6,7 +6,7 @@
 
 **Architecture:** Java Spring Boot **Core Service** owns all persistence (MySQL), auth, ticket/customer/order data, the tool-action/approval/idempotency lifecycle, and trace/eval-run storage — it is the system of record and the only thing that can execute a sensitive action. Python FastAPI **AI Service** owns knowledge-base retrieval (BM25 keyword search) and all LLM orchestration via **LangGraph** graphs (triage graph, draft graph), calling an LLM through **OpenRouter** behind a swappable `ModelAdapter` (mockable for tests/evals). Java calls Python's `/internal/*` endpoints and treats every AI output as a *recommendation only*. A **React + Vite** SPA talks only to the Java API. All three ship as Docker images behind one `docker-compose.yml` alongside MySQL.
 
-**Tech Stack:** Java 25 / Spring Boot 4 / Gradle Kotlin DSL / Spring Data JPA / MySQL / Spring Security + `jjwt` (already scaffolded) — Python 3.12 / FastAPI / LangGraph / LangChain OpenAI-compatible client pointed at OpenRouter / `rank-bm25` / pytest — React 18 / Vite / TypeScript — Docker Compose.
+**Tech Stack:** Java 21 bytecode target / Spring Boot 3.3.7 / Gradle Kotlin DSL / Spring Data JPA / MySQL / Spring Security + `jjwt` (corrected during Phase 1 Task 1 — the original scaffold's Spring Boot 4.0.7 doesn't resolve, and the local JDK 26 breaks Lombok's compiler hooks, so entities are hand-written POJOs instead; see that task's report) — Python 3.12 / FastAPI / LangGraph / LangChain OpenAI-compatible client pointed at OpenRouter / `rank-bm25` / pytest — React 18 / Vite / TypeScript — Docker Compose. **Docker base images must target JDK 21, not 25.**
 
 ## Global Constraints
 
@@ -374,8 +374,15 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/auto}
       DATA_DIR: /app/data
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
     volumes: ["./data:/app/data:ro"]
-    ports: ["8000:8000"]
+    # Deliberately no `ports:` mapping — this service must only be reachable
+    # from the `backend` container on the Docker-internal network. Phase 2
+    # added a shared-secret X-Internal-Key check on every /internal/* and
+    # /documents/* route as defense-in-depth (a whole-branch review found
+    # these routes had zero auth), but the network boundary is still the
+    # primary control — do not add a ports mapping here without re-reviewing
+    # that decision.
 
   backend:
     build: ./backend
@@ -387,6 +394,7 @@ services:
       SPRING_DATASOURCE_USERNAME: trustdesk
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
       APP_AI_SERVICE_BASE_URL: http://ai-service:8000
+      APP_AI_SERVICE_INTERNAL_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       APP_JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       APP_SEED_DATA_DIR: /app/data
     volumes: ["./data:/app/data:ro"]

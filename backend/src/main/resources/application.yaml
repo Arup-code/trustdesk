@@ -1,3 +1,21 @@
 spring:
   application:
     name: backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/trustdesk}
+    username: ${SPRING_DATASOURCE_USERNAME:trustdesk}
+    password: ${SPRING_DATASOURCE_PASSWORD:trustdesk}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+app:
+  seed:
+    data-dir: ../data
+  jwt:
+    secret: ${APP_JWT_SECRET:dev-secret-change-me-please-override-in-prod}
+    expiration-minutes: 480
+  ai-service:
+    base-url: ${APP_AI_SERVICE_BASE_URL:http://localhost:8000}
+    internal-key: ${APP_AI_SERVICE_INTERNAL_KEY:dev-internal-key-change-me}

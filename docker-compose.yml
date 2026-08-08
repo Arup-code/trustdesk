@@ -1,0 +1,60 @@
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_DATABASE: trustdesk
+      MYSQL_USER: trustdesk
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+    ports: ["127.0.0.1:3307:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
+
+  ai-service:
+    build: ./ai-service
+    environment:
+      AI_MODEL_MODE: ${AI_MODEL_MODE:-mock}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/auto}
+      AI_EMBEDDING_MODE: ${AI_EMBEDDING_MODE:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_SIMILARITY_THRESHOLD: ${EMBEDDING_SIMILARITY_THRESHOLD:-0.35}
+      DATA_DIR: /app/data
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
+      JAVA_BASE_URL: http://backend:8080
+      EVAL_JAVA_USERNAME: ${EVAL_JAVA_USERNAME:-agent1}
+      EVAL_JAVA_PASSWORD: ${EVAL_JAVA_PASSWORD:-agent123}
+    volumes: ["./data:/app/data:ro"]
+    # Deliberately no ports mapping -- ai-service must only be reachable from
+    # the backend container on the Docker-internal network (Phase 2 decision).
+
+  backend:
+    build: ./backend
+    depends_on:
+      mysql: { condition: service_healthy }
+      ai-service: { condition: service_started }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/trustdesk
+      SPRING_DATASOURCE_USERNAME: trustdesk
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-trustdesk}
+      APP_AI_SERVICE_BASE_URL: http://ai-service:8000
+      APP_AI_SERVICE_INTERNAL_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
+      APP_JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-please-override-in-prod}
+      APP_SEED_DATA_DIR: /app/data
+    volumes: ["./data:/app/data:ro"]
+    ports: ["8081:8080"]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8081
+    depends_on: [backend]
+    ports: ["3001:80"]
+
+volumes:
+  mysql-data:

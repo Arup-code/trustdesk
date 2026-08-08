@@ -1,0 +1,9 @@
+# Test-only image: matches the Dockerfile's python:3.12-slim runtime so
+# chromadb / chroma-hnswlib have prebuilt wheels available (the host machine's
+# local .venv is Python 3.14, which has no chroma-hnswlib wheel and no C++
+# build toolchain). Used only to run the test suite; not part of the shipped
+# service image.
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt

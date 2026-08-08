@@ -1,0 +1,86 @@
+# Production topology for hosting under https://trustdesk.dexcode.app.
+#
+# Single origin, path-prefix routing: the frontend's nginx serves the SPA at
+# `/` and proxies `/api/*` to the backend container (see frontend/nginx.conf),
+# so the browser only ever talks to trustdesk.dexcode.app -- no CORS, and the
+# backend/mysql ports are never published to the host, only reachable over the
+# Docker-internal network. A TLS-terminating reverse proxy or load balancer in
+# front of this host (routing 443 -> the frontend container's port 80) is
+# assumed to already exist; this file does not set one up.
+#
+# This is a standalone file, not an overlay on docker-compose.yml -- Compose
+# merges list fields like `ports` across -f files rather than letting an
+# empty override clear them, so unpublishing the backend/mysql ports isn't
+# expressible as an overlay. Run it by itself:
+#
+#   docker compose -f docker-compose.prod.yml up --build -d
+#
+# Keep this in sync with docker-compose.yml (the local-dev file) when either
+# changes -- the mysql/ai-service/backend service definitions are the same
+# topology, just without host port publishing, plus the frontend build arg
+# and published port for the single-origin proxy setup above.
+
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_DATABASE: trustdesk
+      MYSQL_USER: trustdesk
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env for production}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env for production}
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
+
+  ai-service:
+    build: ./ai-service
+    environment:
+      AI_MODEL_MODE: ${AI_MODEL_MODE:-mock}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/auto}
+      AI_EMBEDDING_MODE: ${AI_EMBEDDING_MODE:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_SIMILARITY_THRESHOLD: ${EMBEDDING_SIMILARITY_THRESHOLD:-0.35}
+      DATA_DIR: /app/data
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY must be set in .env for production}
+      JAVA_BASE_URL: http://backend:8080
+      EVAL_JAVA_USERNAME: ${EVAL_JAVA_USERNAME:-agent1}
+      EVAL_JAVA_PASSWORD: ${EVAL_JAVA_PASSWORD:-agent123}
+    volumes: ["./data:/app/data:ro"]
+    # No ports mapping -- ai-service must only be reachable from the backend
+    # container on the Docker-internal network (Phase 2 decision).
+
+  backend:
+    build: ./backend
+    depends_on:
+      mysql: { condition: service_healthy }
+      ai-service: { condition: service_started }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/trustdesk
+      SPRING_DATASOURCE_USERNAME: trustdesk
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env for production}
+      APP_AI_SERVICE_BASE_URL: http://ai-service:8000
+      APP_AI_SERVICE_INTERNAL_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY must be set in .env for production}
+      APP_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env for production}
+      APP_SEED_DATA_DIR: /app/data
+    volumes: ["./data:/app/data:ro"]
+    # No ports mapping -- only reachable from the frontend container's nginx
+    # /api/ proxy over the Docker-internal network, per the single-origin
+    # topology described above.
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Relative, not absolute -- resolves against whatever origin the
+        # browser loaded the page from (https://trustdesk.dexcode.app),
+        # proxied to the backend by frontend/nginx.conf's /api/ location.
+        VITE_API_BASE_URL: /api
+    depends_on: [backend]
+    ports: ["80:80"]
+
+volumes:
+  mysql-data:

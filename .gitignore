@@ -28,3 +28,7 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+ai-service/.pytest_cache/
+
+# Superpowers SDD workspaces
+.superpowers/

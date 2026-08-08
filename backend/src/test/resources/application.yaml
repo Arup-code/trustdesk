@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: backend
+  datasource:
+    url: jdbc:h2:mem:trustdesk-test-${random.uuid};MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    open-in-view: false
+
+app:
+  seed:
+    data-dir: does-not-exist
+  jwt:
+    secret: test-secret-test-secret-test-secret-value
+  ai-service:
+    base-url: http://localhost:8000
+    internal-key: test-internal-key
