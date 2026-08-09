@@ -136,21 +136,36 @@ npm run dev   # serves on http://localhost:5173, reads VITE_API_BASE_URL from fr
 
 ## Hosting
 
-**The final hosted version will be available at
-[trustdesk.dexcode.app](https://trustdesk.dexcode.app) — deployment is currently in progress.**
-Local Docker Compose (above) remains the primary, fully-working way to run this project right now;
-nothing about the hosting prep below changes that.
+The hosted version runs at [trustdesk.dexcode.app](https://trustdesk.dexcode.app), deployed via
+[Dokploy](https://dokploy.com) as a Docker Compose application. Local Docker Compose (above)
+remains the primary way to run this project for development; nothing about the deployment below
+changes that.
 
 The codebase is prepped for a single-origin, path-prefix deployment: the frontend's nginx serves
 the SPA at `/` and proxies `/api/*` to the backend container (`frontend/nginx.conf`), so the
-browser only ever talks to `trustdesk.dexcode.app` — no CORS round-trip, and the backend/MySQL
-ports are never published to the host, only reachable over the Docker-internal network.
+browser only ever talks to `trustdesk.dexcode.app` — no CORS round-trip, and the backend/MySQL/
+ai-service ports are never published to the host, only reachable over the Docker-internal network.
 `docker-compose.prod.yml` (a standalone file, not a `-f`-chained overlay — Compose merges list
 fields like `ports` across files rather than letting an override clear them) captures this
-topology; a TLS-terminating reverse proxy or load balancer routing `443` → the frontend container's
-port `80` is assumed to already exist in front of it, which this repo doesn't set up. The backend's
-CORS allowlist (`SecurityConfig.java`) also includes `https://trustdesk.dexcode.app` as
-defense-in-depth, even though same-origin path-prefix routing shouldn't need it.
+topology, with the frontend container exposing port 80 internally (not published to the host) for
+Dokploy's Traefik to route to. The backend's CORS allowlist (`SecurityConfig.java`) also includes
+`https://trustdesk.dexcode.app` as defense-in-depth, even though same-origin path-prefix routing
+shouldn't need it.
+
+### Deploying with Dokploy
+
+1. In the Dokploy dashboard, create a new project and add an application of type **Docker
+   Compose**, pointing it at this repo/branch.
+2. Under **Advanced**, set the **Compose Path** to `docker-compose.prod.yml`.
+3. Under **Environment**, set the required secrets (Dokploy writes these to a `.env` file next to
+   the compose file, which Compose reads automatically for `${VAR}` substitution): `MYSQL_PASSWORD`,
+   `MYSQL_ROOT_PASSWORD`, `JWT_SECRET`, `INTERNAL_API_KEY` — all required, deploy fails fast without
+   them (see `.env.example`). Set `AI_MODEL_MODE`/`AI_EMBEDDING_MODE` to `live` with an
+   `OPENROUTER_API_KEY`/`OPENAI_API_KEY` if you want real model calls instead of the mock adapter.
+4. Deploy, then open the app's **Domains** tab and add `trustdesk.dexcode.app`, routed to the
+   `frontend` service on container port `80`. Dokploy provisions the Let's Encrypt certificate and
+   injects the Traefik labels/network wiring automatically — no manual Traefik config needed.
+5. Point the domain's DNS `A`/`CNAME` record at the Dokploy host if not already done.
 
 ## API overview
 
