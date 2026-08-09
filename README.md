@@ -156,7 +156,11 @@ shouldn't need it.
 
 1. In the Dokploy dashboard, create a new project and add an application of type **Docker
    Compose**, pointing it at this repo/branch.
-2. Under **Advanced**, set the **Compose Path** to `docker-compose.prod.yml`.
+2. Under **General**, set the **Compose Path** to `docker-compose.prod.yml` (Dokploy defaults this to
+   `docker-compose.yml`, which is the local-dev file with published dev ports and a `localhost`
+   API base URL baked into the frontend build — wrong for this domain). After changing it, use
+   **Redeploy**, not Stop then Start — a known Dokploy bug reverts Compose Path to the default
+   `docker-compose.yml` on Stop/Start (dokploy/dokploy#2282).
 3. Under **Environment**, set the required secrets (Dokploy writes these to a `.env` file next to
    the compose file, which Compose reads automatically for `${VAR}` substitution): `MYSQL_PASSWORD`,
    `MYSQL_ROOT_PASSWORD`, `JWT_SECRET`, `INTERNAL_API_KEY` — all required, deploy fails fast without
